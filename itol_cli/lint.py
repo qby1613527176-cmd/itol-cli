@@ -153,6 +153,15 @@ def lint_file(path: Path) -> LintReport:
             if sep == "," and "|" not in nid and " " in nid:
                 rep.add("error", lineno, f"COMMA 分隔下节点 ID 含空格：{nid!r}——内部节点请用 LCA 写法 ID1|ID2")
 
+    # 4.5 类型必填项（官方模板 MANDATORY SETTINGS 区实证：20/20 dataset_* 模板全有 DATASET_LABEL）
+    header_keys = {re.split(r"[\s,]+", ln, maxsplit=1)[0].upper() for ln in header}
+    if rep.keyword.startswith("DATASET_") and "DATASET_LABEL" not in header_keys:
+        rep.add("error", -1, f"{rep.keyword} 缺 MANDATORY 字段 DATASET_LABEL（官方模板必填）")
+    if rep.keyword == "DATASET_COLORSTRIP" and "COLOR" not in header_keys:
+        rep.add("warning", -1, "COLORSTRIP 建议带 COLOR（图例/默认色，官方模板 MANDATORY 区）")
+    if ("LEGEND_COLORS" in header_keys or "LEGEND_LABELS" in header_keys) and "LEGEND_SHAPES" not in header_keys:
+        rep.add("warning", -1, "图例规范=每行 shape+color+label：有 LEGEND_COLORS/LABELS 建议补 LEGEND_SHAPES")
+
     # 5. 类型特定校验
     if rep.keyword == "DATASET_COLORSTRIP":
         for i, ln in enumerate(data):

@@ -14,6 +14,17 @@ from pathlib import Path
 OKABE_ITO = ["#E69F00", "#56B4E9", "#009E73", "#F0E442",
              "#0072B2", "#D55E00", "#CC79A7", "#999999"]
 
+# 扩展色板：Okabe-Ito 8 色 + Tol bright 10 色（>8 分组时用，17 亚家族实证需求）
+PALETTE_18 = OKABE_ITO + [
+    "#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE",
+    "#AA3377", "#BBBBBB", "#333333", "#7FCD9B", "#C9A0DC",
+]
+
+
+def palette_for(n: int) -> list:
+    """按分组数给色板：≤8 用 Okabe-Ito，>8 用 18 色扩展，>18 循环（告警由调用方决定）。"""
+    return PALETTE_18 if n > len(OKABE_ITO) else OKABE_ITO
+
 
 @dataclass
 class TemplateSpec:
@@ -44,7 +55,6 @@ TEMPLATES = {
 
 def write_subfamily(groups_tsv: Path, outdir: Path, palette: list = None) -> list:
     """亚家族着色：分组 tsv → TREE_COLORS + COLORSTRIP 两个注解文件。"""
-    palette = palette or OKABE_ITO
     groups: dict = {}
     order: list = []
     for ln in Path(groups_tsv).read_text(encoding="utf-8").splitlines():
@@ -53,9 +63,12 @@ def write_subfamily(groups_tsv: Path, outdir: Path, palette: list = None) -> lis
         nid, _, g = ln.partition("\t")
         g = g.strip() or "ungrouped"
         if g not in groups:
-            groups[g] = palette[len(groups) % len(palette)]
+            groups[g] = None  # 占位，色板后定
             order.append(g)
         groups.setdefault("_rows", []).append((nid.strip(), g))
+    palette = palette or palette_for(len(order))
+    for i, g in enumerate(order):
+        groups[g] = palette[i % len(palette)]
     rows = groups["_rows"]
 
     # TREE_COLORS：叶标签+枝按组着色
@@ -65,9 +78,13 @@ def write_subfamily(groups_tsv: Path, outdir: Path, palette: list = None) -> lis
         tc.append(f"{nid}\tbranch\t{c}\tnormal\t1")   # 枝着色
         tc.append(f"{nid}\tlabel\t{c}")                # 标签着色
     # COLORSTRIP：外圈色带 + 图例
+    # 官方 MANDATORY SETTINGS：SEPARATOR / DATASET_LABEL / COLOR 必填（模板实证）
+    # 图例规范：每行 legend 需 shape+color+label 三件套
     cs = ["DATASET_COLORSTRIP", "SEPARATOR TAB",
+          "DATASET_LABEL\tSubfamily",
           "COLOR\t#ff0000",
           "LEGEND_TITLE\tSubfamily",
+          "LEGEND_SHAPES\t" + "\t".join("1" for _ in order),
           "LEGEND_COLORS\t" + "\t".join(groups[g] for g in order),
           "LEGEND_LABELS\t" + "\t".join(order),
           "SHOW_STRIP_LABELS\t0", "DATA"]

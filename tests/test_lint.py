@@ -13,8 +13,15 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 
 def test_colorstrip_ok(tmp_path):
-    p = _write(tmp_path, "DATASET_COLORSTRIP\nSEPARATOR TAB\nDATA\nGeneA\t#E69F00\tSub1\nGeneB\t#56B4E9\tSub2\n")
+    p = _write(tmp_path, "DATASET_COLORSTRIP\nSEPARATOR TAB\nDATASET_LABEL\tsub\nCOLOR\t#ff0000\nDATA\nGeneA\t#E69F00\tSub1\nGeneB\t#56B4E9\tSub2\n")
     assert lint_file(p).ok
+
+
+def test_colorstrip_missing_dataset_label_is_error(tmp_path):
+    """DATASET_LABEL 是官方模板 MANDATORY 字段（用户拖拽报错实证）——缺它必须被抓。"""
+    rep = lint_file(_write(tmp_path, "DATASET_COLORSTRIP\nSEPARATOR TAB\nDATA\nGeneA\t#E69F00\tSub1\n"))
+    assert not rep.ok
+    assert any("DATASET_LABEL" in i.message for i in rep.errors)
 
 
 def test_unknown_keyword_with_hint(tmp_path):
@@ -43,7 +50,7 @@ def test_heatmap_field_labels_mismatch(tmp_path):
 
 
 def test_heatmap_ok(tmp_path):
-    rep = lint_file(_write(tmp_path, "DATASET_HEATMAP\nSEPARATOR TAB\nFIELD_LABELS\ts1,s2\nDATA\nG1\t1\t2\n"))
+    rep = lint_file(_write(tmp_path, "DATASET_HEATMAP\nSEPARATOR TAB\nDATASET_LABEL\thm\nFIELD_LABELS\ts1,s2\nDATA\nG1\t1\t2\n"))
     assert rep.ok
 
 
