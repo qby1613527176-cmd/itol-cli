@@ -50,6 +50,16 @@ TEMPLATES = {
         "矩阵 tsv：首列基因 ID（=树叶名），其余列=样本表达量（建议 log2 TPM z-score）",
         ["DATASET_HEATMAP"],
     ),
+    "domains": TemplateSpec(
+        "domains", "域结构联树（蛋白域示意，Pfam/hmmsearch 结果上树）",
+        "域表 tsv：gene<TAB>domain<TAB>start<TAB>end<TAB>protein_length（每行一个域命中，同基因多行）",
+        ["DATASET_DOMAINS（骨架+域形状，官方原生类型）"],
+    ),
+    "motif": TemplateSpec(
+        "motif", "motif 联树（MEME/FIMO 基序位置按域状结构上树）",
+        "motif 表 tsv：gene<TAB>motif_name<TAB>start<TAB>end<TAB>gene_length（MEME/FIMO 输出提取后整理）",
+        ["DATASET_DOMAINS（motif 作色块；>8 motif 建议合并相似项防色板爆炸）"],
+    ),
 }
 
 
@@ -108,6 +118,58 @@ BOOTSTRAP_EXPORT_PRESET = {
     "bootstrap_slider_min": "70",   # <70 隐藏（agent6 审美规则）
     "bootstrap_slider_max": "100",
 }
+
+
+def write_domains(domains_tsv: Path, outdir: Path, label: str = "Domains",
+                  palette: list = None, shape: str = "RE") -> list:
+    """域结构/基序联树：域表 → DATASET_DOMAINS（官方原生类型）。
+
+    输入 tsv（每行一个域命中，同基因多行）：
+        gene<TAB>domain<TAB>start<TAB>end<TAB>protein_length
+    输出 DATA 行（官方语法）：
+        gene<SEP>length<SEP>SHAPE|START|END|COLOR|LABEL[<SEP>SHAPE|START|END|COLOR|LABEL...]
+    """
+    genes: dict = {}
+    domain_names: list = []
+    for i, ln in enumerate(Path(domains_tsv).read_text(encoding="utf-8").splitlines()):
+        if not ln.strip() or ln.startswith("#"):
+            continue
+        parts = ln.split("\t")
+        if len(parts) < 5:
+            raise ValueError(f"第 {i + 1} 行列数不足（需 5 列：gene/domain/start/end/length）：{ln!r}")
+        g, dom = parts[0].strip(), parts[1].strip()
+        try:
+            s, e, plen = int(parts[2]), int(parts[3]), int(parts[4])
+        except ValueError:
+            raise ValueError(f"第 {i + 1} 行 start/end/length 必须是整数：{ln!r}") from None
+        if s >= e:
+            raise ValueError(f"第 {i + 1} 行 start>=end：{ln!r}")
+        if e > plen:
+            raise ValueError(f"第 {i + 1} 行 end>protein_length：{ln!r}")
+        genes.setdefault(g, {"length": plen, "domains": []})["domains"].append((dom, s, e))
+        if dom not in domain_names:
+            domain_names.append(dom)
+    if not genes:
+        raise ValueError("输入无任何有效域记录")
+    palette = palette or palette_for(len(domain_names))
+    colors = {d: palette[i % len(palette)] for i, d in enumerate(domain_names)}
+
+    out = ["DATASET_DOMAINS", "SEPARATOR TAB",
+           f"DATASET_LABEL\t{label}", "COLOR\t#ff0000",
+           "BACKBONE_COLOR\t#aaaaaa", "BACKBONE_HEIGHT\t10", "BORDER_WIDTH\t1",
+           f"LEGEND_TITLE\t{label}",
+           "LEGEND_SHAPES\t" + "\t".join(shape for _ in domain_names),
+           "LEGEND_COLORS\t" + "\t".join(colors[d] for d in domain_names),
+           "LEGEND_LABELS\t" + "\t".join(domain_names),
+           "DATA"]
+    for g, info in genes.items():
+        defs = "\t".join(f"{shape}|{s}|{e}|{colors[d]}|{d}" for d, s, e in info["domains"])
+        out.append(f"{g}\t{info['length']}\t{defs}")
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    p = outdir / "itol_domains.txt"
+    p.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return [p]
 
 
 def write_heatmap(matrix_tsv: Path, outdir: Path, tree_leaves: list = None) -> list:

@@ -11,7 +11,7 @@ from . import __version__
 from .client import EXPORT_FORMATS, ItolClient
 from .errors import ItolError
 from .lint import lint_paths
-from .templates import BOOTSTRAP_EXPORT_PRESET, TEMPLATES, write_heatmap, write_subfamily
+from .templates import BOOTSTRAP_EXPORT_PRESET, TEMPLATES, write_domains, write_heatmap, write_subfamily
 
 
 def _load_key() -> str:
@@ -86,6 +86,12 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path) -> None:
         raise click.UsageError(f"itol gen {scenario} <输入文件>\n输入规范：{spec.inputs}")
     if scenario == "subfamily":
         outs = write_subfamily(input_file, outdir)
+        click.echo("已生成：")
+        for p in outs:
+            click.echo(f"  {p}")
+    elif scenario in ("domains", "motif"):
+        outs = write_domains(input_file, outdir,
+                             label="Domains" if scenario == "domains" else "Motifs")
         click.echo("已生成：")
         for p in outs:
             click.echo(f"  {p}")

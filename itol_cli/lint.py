@@ -184,6 +184,33 @@ def lint_file(path: Path) -> LintReport:
             row = split_row(ln)
             if len(row) >= 2 and ("|" in row[0] or "|" in row[1]):
                 rep.add("warning", data_idx + 1 + i, "CONNECTION 的节点通常是叶名对，LCA 写法确认是否符合预期")
+    if rep.keyword == "DATASET_DOMAINS":
+        for i, ln in enumerate(data):
+            row = split_row(ln)
+            lineno = data_idx + 1 + i
+            if len(row) < 3:
+                rep.add("error", lineno, f"DOMAINS 数据行需 ≥3 列（ID/蛋白长度/域定义…）：{ln[:60]!r}")
+                continue
+            try:
+                plen = int(row[1])
+            except ValueError:
+                rep.add("error", lineno, f"DOMAINS 第 2 列须为蛋白长度整数：{row[1]!r}")
+                continue
+            for d in row[2:]:
+                parts = d.split("|")
+                if len(parts) != 5:
+                    rep.add("error", lineno, f"域定义需 5 段 SHAPE|START|END|COLOR|LABEL：{d!r}")
+                    continue
+                try:
+                    s, e = int(parts[1]), int(parts[2])
+                    if s >= e:
+                        rep.add("error", lineno, f"域 START>=END：{d!r}")
+                    elif e > plen:
+                        rep.add("error", lineno, f"域 END>{plen}（超蛋白长度）：{d!r}")
+                except ValueError:
+                    rep.add("error", lineno, f"域 START/END 须为整数：{d!r}")
+                if not _is_color(parts[3]):
+                    rep.add("error", lineno, f"域颜色非 hex/rgb/rgba：{parts[3]!r}")
 
     return rep
 

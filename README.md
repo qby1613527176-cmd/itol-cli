@@ -28,13 +28,15 @@ itol upload tree.tree ann1.txt --project MyProj  # 上传（需订阅+key）
 - 官方无速率限制，本工具默认串行+1s 间隔+指数退避
 - 分享 URL（/tree/\<id\>）无鉴权，知 ID 即可访问——注意未发表数据
 
-## 场景模板库（P0）
+## 场景模板库
 
 | 场景 | 输入 | 产出 |
 |:------|:------|:------|
-| `subfamily` 亚家族着色主树 | 分组 tsv（node_id TAB group） | TREE_COLORS + COLORSTRIP（Okabe-Ito 色盲色板） |
+| `subfamily` 亚家族着色主树 | 分组 tsv（node_id TAB group） | TREE_COLORS + COLORSTRIP（Okabe-Ito/Tol 18 色板） |
 | `bootstrap` 支持率展示 | IQ-TREE .contree | 导出参数预设（≥95 实心点规则） |
 | `heatmap` 表达热图联树 | 矩阵 tsv（首列=树叶名） | DATASET_HEATMAP（内建行序=树序校验） |
+| `domains` 域结构联树 | 域表 tsv（gene/domain/start/end/len） | DATASET_DOMAINS（官方原生类型） |
+| `motif` 基序联树 | motif 表 tsv（同构） | DATASET_DOMAINS（motif 作色块） |
 
 ## 错误契约
 
