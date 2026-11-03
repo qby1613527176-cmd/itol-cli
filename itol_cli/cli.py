@@ -11,7 +11,9 @@ from . import __version__
 from .client import EXPORT_FORMATS, ItolClient
 from .errors import ItolError
 from .lint import lint_paths
-from .templates import BOOTSTRAP_EXPORT_PRESET, TEMPLATES, write_domains, write_heatmap, write_subfamily
+from .templates import (BOOTSTRAP_EXPORT_PRESET, TEMPLATES, write_connections,
+                        write_domains, write_heatmap, write_selection,
+                        write_subfamily, write_timescale)
 
 
 def _load_key() -> str:
@@ -92,6 +94,21 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path) -> None:
     elif scenario in ("domains", "motif"):
         outs = write_domains(input_file, outdir,
                              label="Domains" if scenario == "domains" else "Motifs")
+        click.echo("已生成：")
+        for p in outs:
+            click.echo(f"  {p}")
+    elif scenario == "selection":
+        outs = write_selection(input_file, outdir)
+        click.echo("已生成：")
+        for p in outs:
+            click.echo(f"  {p}")
+    elif scenario == "connections":
+        outs = write_connections(input_file, outdir)
+        click.echo("已生成：")
+        for p in outs:
+            click.echo(f"  {p}")
+    elif scenario == "timescale":
+        outs = write_timescale(input_file, outdir)
         click.echo("已生成：")
         for p in outs:
             click.echo(f"  {p}")

@@ -60,6 +60,21 @@ TEMPLATES = {
         "motif 表 tsv：gene<TAB>motif_name<TAB>start<TAB>end<TAB>gene_length（MEME/FIMO 输出提取后整理）",
         ["DATASET_DOMAINS（motif 作色块；>8 motif 建议合并相似项防色板爆炸）"],
     ),
+    "selection": TemplateSpec(
+        "selection", "选择压力标注树（枝按 ω 蓝→白→红渐变，正选择枝高亮）",
+        "ω 表 tsv：node<TAB>omega（node=叶名或内部节点 LCA 写法 ID1|ID2；codeml/HyPhy 输出整理）",
+        ["TREE_COLORS（branch 按 ω 发散色阶）"],
+    ),
+    "connections": TemplateSpec(
+        "connections", "共线连线树 / tanglegram（两节点间连线，synteny anchors 上树）",
+        "配对表 tsv：node1<TAB>node2[<TAB>color][<TAB>label]（color 缺省灰；宽度按 MAXIMUM_LINE_WIDTH 归一）",
+        ["DATASET_CONNECTION"],
+    ),
+    "timescale": TemplateSpec(
+        "timescale", "时间树地质年代轴（树下方色带时间标尺）",
+        "区间表 tsv：name<TAB>start<TAB>end[<TAB>color]（地质年代或自定义区间，单位与树枝长一致如 Mya）",
+        ["DATASET_TIMESCALE"],
+    ),
 }
 
 
@@ -168,6 +183,127 @@ def write_domains(domains_tsv: Path, outdir: Path, label: str = "Domains",
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     p = outdir / "itol_domains.txt"
+    p.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return [p]
+
+
+def _omega_color(omega: float) -> str:
+    """ω 发散色阶：蓝（强纯化 #2166AC）→ 白（ω=1 #F7F7F7）→ 红（正选择 #B2182B，cap 3）。"""
+    def hex2rgb(h):
+        return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+
+    def rgb2hex(rgb):
+        return "#" + "".join(f"{max(0, min(255, round(c))):02X}" for c in rgb)
+
+    def lerp(a, b, t):
+        return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
+
+    blue, white, red = hex2rgb("#2166AC"), hex2rgb("#F7F7F7"), hex2rgb("#B2182B")
+    w = max(0.0, min(omega, 3.0))
+    if w <= 1.0:
+        return rgb2hex(lerp(blue, white, w))
+    return rgb2hex(lerp(white, red, (w - 1.0) / 2.0))
+
+
+def write_selection(omega_tsv: Path, outdir: Path) -> list:
+    """选择压力标注树：ω 表 → TREE_COLORS（枝按 ω 蓝→白→红渐变）。
+
+    输入 tsv：node<TAB>omega（node=叶名或内部节点 LCA 写法 ID1|ID2）
+    """
+    rows = []
+    for i, ln in enumerate(Path(omega_tsv).read_text(encoding="utf-8").splitlines()):
+        if not ln.strip() or ln.startswith("#"):
+            continue
+        nid, _, w = ln.partition("\t")
+        try:
+            w = float(w.strip())
+        except ValueError:
+            raise ValueError(f"第 {i + 1} 行 ω 不是数字：{ln!r}") from None
+        rows.append((nid.strip(), w))
+    if not rows:
+        raise ValueError("输入无任何有效 ω 记录")
+
+    out = ["TREE_COLORS", "SEPARATOR TAB",
+           "# ω 发散色阶：蓝(纯化)→白(ω=1)→红(正选择,cap 3)",
+           "DATA"]
+    for nid, w in rows:
+        out.append(f"{nid}\tbranch\t{_omega_color(w)}\tnormal\t2")
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    p = outdir / "itol_selection.txt"
+    p.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return [p]
+
+
+def write_connections(pairs_tsv: Path, outdir: Path, width: float = 1.0,
+                      style: str = "normal") -> list:
+    """共线连线树 / tanglegram：配对表 → DATASET_CONNECTION。
+
+    输入 tsv：node1<TAB>node2[<TAB>color][<TAB>label]
+    官方行：NODE1,NODE2,WIDTH,COLOR,STYLE,LABEL（宽度按 MAXIMUM_LINE_WIDTH 归一；STYLE normal/dashed）
+    """
+    rows = []
+    for i, ln in enumerate(Path(pairs_tsv).read_text(encoding="utf-8").splitlines()):
+        if not ln.strip() or ln.startswith("#"):
+            continue
+        parts = [p.strip() for p in ln.split("\t")]
+        if len(parts) < 2:
+            raise ValueError(f"第 {i + 1} 行需 ≥2 列（node1 node2）：{ln!r}")
+        color = parts[2] if len(parts) >= 3 and parts[2] else "#999999"
+        label = parts[3] if len(parts) >= 4 else ""
+        rows.append((parts[0], parts[1], color, label))
+    if not rows:
+        raise ValueError("输入无任何有效配对")
+    out = ["DATASET_CONNECTION", "SEPARATOR TAB",
+           "DATASET_LABEL\tConnections", "COLOR\t#999999",
+           "DRAW_ARROWS\t0", "MAXIMUM_LINE_WIDTH\t10", "CENTER_CURVES\t1",
+           "DATA"]
+    for n1, n2, c, lab in rows:
+        out.append(f"{n1}\t{n2}\t{width}\t{c}\t{style}\t{lab}")
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    p = outdir / "itol_connections.txt"
+    p.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return [p]
+
+
+def write_timescale(intervals_tsv: Path, outdir: Path, scaling: float = 1.0) -> list:
+    """时间树地质年代轴：区间表 → DATASET_TIMESCALE（树下方色带时间标尺）。
+
+    输入 tsv：name<TAB>start<TAB>end[<TAB>color]
+    ⚠️ iTOL 约定：零=树顶（现今），值向根递增——start（老，大值）> end（新，小值）。
+    官方行：RANGE_START,RANGE_END,START_LABEL,END_LABEL,FILL_COLOR,GRADIENT_COLOR,LABEL_TEXT,LABEL_STYLE
+    """
+    rows = []
+    for i, ln in enumerate(Path(intervals_tsv).read_text(encoding="utf-8").splitlines()):
+        if not ln.strip() or ln.startswith("#"):
+            continue
+        parts = [p.strip() for p in ln.split("\t")]
+        if len(parts) < 3:
+            raise ValueError(f"第 {i + 1} 行需 ≥3 列（name start end）：{ln!r}")
+        try:
+            start, end = float(parts[1]), float(parts[2])
+        except ValueError:
+            raise ValueError(f"第 {i + 1} 行 start/end 须为数字：{ln!r}") from None
+        if start <= end:
+            raise ValueError(f"第 {i + 1} 行 iTOL 约定 start(老)>end(新)，此行 start={start} end={end}：{ln!r}")
+        color = parts[3] if len(parts) >= 4 and parts[3] else "#c8c8c8"
+        rows.append((parts[0], start, end, color))
+    if not rows:
+        raise ValueError("输入无任何有效区间")
+    out = ["DATASET_TIMESCALE", "SEPARATOR TAB",
+           "DATASET_LABEL\tTimescale", "COLOR\t#000000",
+           f"SCALING_FACTOR\t{scaling}", "AUTO_SCALE\t1", "SHOW_VALUE_LABELS\t1",
+           "DATA"]
+
+    def _num(x: float) -> str:
+        return str(int(x)) if float(x).is_integer() else str(x)
+
+    for name, start, end, color in rows:
+        out.append(f"{_num(start)}\t{_num(end)}\t\t\t{color}\t\t{name}\tnormal")
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    p = outdir / "itol_timescale.txt"
     p.write_text("\n".join(out) + "\n", encoding="utf-8")
     return [p]
 

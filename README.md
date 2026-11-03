@@ -37,6 +37,9 @@ itol upload tree.tree ann1.txt --project MyProj  # 上传（需订阅+key）
 | `heatmap` 表达热图联树 | 矩阵 tsv（首列=树叶名） | DATASET_HEATMAP（内建行序=树序校验） |
 | `domains` 域结构联树 | 域表 tsv（gene/domain/start/end/len） | DATASET_DOMAINS（官方原生类型） |
 | `motif` 基序联树 | motif 表 tsv（同构） | DATASET_DOMAINS（motif 作色块） |
+| `selection` 选择压力标注树 | ω 表 tsv（node TAB omega） | TREE_COLORS（枝按 ω 蓝→白→红渐变） |
+| `connections` 共线连线树/tanglegram | 配对表 tsv（node1 TAB node2 [color] [label]） | DATASET_CONNECTION |
+| `timescale` 时间树地质年代轴 | 区间表 tsv（name TAB start TAB end [color]） | DATASET_TIMESCALE |
 
 ## 错误契约
 

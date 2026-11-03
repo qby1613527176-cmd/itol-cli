@@ -182,8 +182,39 @@ def lint_file(path: Path) -> LintReport:
     if rep.keyword == "DATASET_CONNECTION":
         for i, ln in enumerate(data):
             row = split_row(ln)
-            if len(row) >= 2 and ("|" in row[0] or "|" in row[1]):
-                rep.add("warning", data_idx + 1 + i, "CONNECTION 的节点通常是叶名对，LCA 写法确认是否符合预期")
+            lineno = data_idx + 1 + i
+            if len(row) < 2:
+                rep.add("error", lineno, f"CONNECTION 行需 ≥2 列（node1 node2…）：{ln[:60]!r}")
+                continue
+            if "|" in row[0] or "|" in row[1]:
+                rep.add("warning", lineno, "CONNECTION 的节点通常是叶名对，LCA 写法确认是否符合预期")
+            if len(row) >= 3 and row[2]:
+                try:
+                    float(row[2])
+                except ValueError:
+                    rep.add("error", lineno, f"CONNECTION 第 3 列 WIDTH 须为数字：{row[2]!r}")
+            if len(row) >= 4 and row[3] and not _is_color(row[3]):
+                rep.add("error", lineno, f"CONNECTION 颜色非 hex/rgb/rgba：{row[3]!r}")
+            if len(row) >= 5 and row[4] and row[4] not in ("normal", "dashed", "dotted"):
+                rep.add("warning", lineno, f"CONNECTION 线型 {row[4]!r} 不在 normal/dashed/dotted 内")
+    if rep.keyword == "DATASET_RANGE":
+        for i, ln in enumerate(data):
+            row = split_row(ln)
+            if len(row) < 2:
+                rep.add("error", data_idx + 1 + i, f"RANGE 行需 ≥2 列（start_node,end_node…）：{ln[:60]!r}")
+    if rep.keyword == "DATASET_TIMESCALE":
+        for i, ln in enumerate(data):
+            row = split_row(ln)
+            lineno = data_idx + 1 + i
+            if len(row) < 2:
+                rep.add("error", lineno, f"TIMESCALE 行需 ≥2 列（start end…）：{ln[:60]!r}")
+                continue
+            try:
+                s, e = float(row[0]), float(row[1])
+                if s <= e:
+                    rep.add("error", lineno, f"TIMESCALE 约定 start(老)>end(新)，此行 {s}<={e}")
+            except ValueError:
+                rep.add("error", lineno, f"TIMESCALE 区间端点须为数字：{row[:2]!r}")
     if rep.keyword == "DATASET_DOMAINS":
         for i, ln in enumerate(data):
             row = split_row(ln)
