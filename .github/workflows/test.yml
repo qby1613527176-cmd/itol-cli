@@ -1,0 +1,16 @@
+name: test
+on: [push, pull_request]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .[dev]
+      - run: pytest tests/ -q
+      - run: ruff check itol_cli/ tests/
+      - run: mypy itol_cli/
+      - name: metadata surface 一致性
+        run: python scripts/gen_metadata.py --check

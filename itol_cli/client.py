@@ -14,7 +14,6 @@ import re
 import time
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -29,7 +28,7 @@ EXPORT_FORMATS = ("svg", "eps", "pdf", "png", "newick", "nexus", "phyloxml")
 # 导出成功时的二进制 MIME（实测规格）；text/html|text/plain = 失败
 _EXPORT_OK_MIME = ("image/", "application/pdf", "application/postscript", "application/octet-stream")
 
-SUCCESS_RE = re.compile(r"^SUCCESS:\s*(\d+)", re.M)
+SUCCESS_RE = re.compile(r"^SUCCESS:\s*(\d+)", re.MULTILINE)
 ERR_RE = re.compile(r"^ERR\s*(\d+)\s*(.*)")
 
 
@@ -37,7 +36,7 @@ def make_upload_zip(tree_file: Path, annotation_files: list[Path]) -> bytes:
     """打包树+注解为 zip（树文件扩展名必须 .tree/.tree.txt/.jplace——官方规格）。"""
     tree_file = Path(tree_file)
     name = tree_file.name
-    if not (name.endswith(".tree") or name.endswith(".tree.txt") or name.endswith(".jplace")):
+    if not name.endswith((".tree", ".tree.txt", ".jplace")):
         # 官方硬性要求；自动补 .tree 扩展名
         name = name + ".tree"
     buf = io.BytesIO()
@@ -51,14 +50,13 @@ def make_upload_zip(tree_file: Path, annotation_files: list[Path]) -> bytes:
 class ItolClient:
     """iTOL API client。serial 请求 + 指数退避；错误分层解析。"""
 
-    def __init__(self, api_key: Optional[str] = None, min_interval: float = 1.0, timeout: float = 120.0):
+    def __init__(self, api_key: str | None = None, min_interval: float = 1.0, timeout: float = 120.0):
         self.api_key = api_key or ""
         self.min_interval = min_interval
         self.timeout = timeout
         self._last_call = 0.0
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "itol-cli/0.1 (+https://github.com/; academic)"
-
     # ---- 内部 ----
     def _throttle(self) -> None:
         delta = time.time() - self._last_call
@@ -68,7 +66,7 @@ class ItolClient:
 
     def _retry(self, fn, attempts: int = 3):
         delay = 2.0
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for i in range(attempts):
             try:
                 return fn()
@@ -113,7 +111,7 @@ class ItolClient:
         return self._parse_upload_response(resp.text)
 
     # ---- 导出（免认证） ----
-    def export(self, tree_id: str, fmt: str, out: Optional[Path] = None, **params) -> bytes:
+    def export(self, tree_id: str, fmt: str, out: Path | None = None, **params) -> bytes:
         """导出树图。fmt ∈ EXPORT_FORMATS；params 透传 batch_downloader 全部显示参数。
 
         注意（调研实证）：无 dpi/宽高参数——高分辨率位图是缺口，默认引导矢量格式。
@@ -163,6 +161,6 @@ class ItolClient:
             return self.session.get(TREE_PAGE.format(tid=tree_id), timeout=self.timeout)
 
         resp = self._retry(call)
-        m = re.search(r"<title>(.*?)</title>", resp.text, re.S)
+        m = re.search(r"<title>(.*?)</title>", resp.text, re.DOTALL)
         title = m.group(1) if m else ""
         return "Error" not in title and "Invalid tree ID" not in resp.text

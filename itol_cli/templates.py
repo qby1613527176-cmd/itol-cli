@@ -75,10 +75,15 @@ TEMPLATES = {
         "区间表 tsv：name<TAB>start<TAB>end[<TAB>color]（地质年代或自定义区间，单位与树枝长一致如 Mya）",
         ["DATASET_TIMESCALE"],
     ),
+    "pav": TemplateSpec(
+        "pav", "泛基因组 PAV 联树（基因×基因组 0/1 有冇矩阵上树）",
+        "0/1 矩阵 tsv：首列基因 ID（=树叶名），其余列=基因组 0/1（建议按树序排列）",
+        ["DATASET_BINARY"],
+    ),
 }
 
 
-def write_subfamily(groups_tsv: Path, outdir: Path, palette: list = None) -> list:
+def write_subfamily(groups_tsv: Path, outdir: Path, palette: list | None = None) -> list:
     """亚家族着色：分组 tsv → TREE_COLORS + COLORSTRIP 两个注解文件。"""
     groups: dict = {}
     order: list = []
@@ -136,7 +141,7 @@ BOOTSTRAP_EXPORT_PRESET = {
 
 
 def write_domains(domains_tsv: Path, outdir: Path, label: str = "Domains",
-                  palette: list = None, shape: str = "RE") -> list:
+                  palette: list | None = None, shape: str = "RE") -> list:
     """域结构/基序联树：域表 → DATASET_DOMAINS（官方原生类型）。
 
     输入 tsv（每行一个域命中，同基因多行）：
@@ -214,9 +219,9 @@ def write_selection(omega_tsv: Path, outdir: Path) -> list:
     for i, ln in enumerate(Path(omega_tsv).read_text(encoding="utf-8").splitlines()):
         if not ln.strip() or ln.startswith("#"):
             continue
-        nid, _, w = ln.partition("\t")
+        nid, _, w_str = ln.partition("\t")
         try:
-            w = float(w.strip())
+            w = float(w_str.strip())
         except ValueError:
             raise ValueError(f"第 {i + 1} 行 ω 不是数字：{ln!r}") from None
         rows.append((nid.strip(), w))
@@ -308,7 +313,45 @@ def write_timescale(intervals_tsv: Path, outdir: Path, scaling: float = 1.0) -> 
     return [p]
 
 
-def write_heatmap(matrix_tsv: Path, outdir: Path, tree_leaves: list = None) -> list:
+def write_pav(matrix_tsv: Path, outdir: Path, tree_leaves: list | None = None) -> tuple[list, list]:
+    """泛基因组 PAV 联树：0/1 矩阵 → DATASET_BINARY。
+
+    输入 tsv：首列基因 ID（=树叶名），其余列=基因组 0/1；与 heatmap 共享行序=树序校验。
+    """
+    lines = Path(matrix_tsv).read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    genomes = header[1:]
+    rows = {ln.split("\t")[0]: ln for ln in lines[1:] if ln.strip()}
+    # 校验 0/1 纯度
+    for ln in lines[1:]:
+        if not ln.strip():
+            continue
+        for v in ln.split("\t")[1:]:
+            if v.strip() not in ("0", "1"):
+                raise ValueError(f"PAV 矩阵只接受 0/1，发现：{v!r}（行 {ln[:40]!r}）")
+    missing, ordered = [], []
+    if tree_leaves:
+        for leaf in tree_leaves:
+            if leaf in rows:
+                ordered.append(rows.pop(leaf))
+            else:
+                missing.append(leaf)
+        ordered.extend(rows.values())
+    else:
+        ordered = list(rows.values())
+    out = ["DATASET_BINARY", "SEPARATOR TAB",
+           "DATASET_LABEL\tPAV", "COLOR\t#E69F00",
+           "FIELD_LABELS\t" + ",".join(genomes),
+           "DATA"]
+    out.extend(ordered)
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    p = outdir / "itol_pav.txt"
+    p.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return [p], missing
+
+
+def write_heatmap(matrix_tsv: Path, outdir: Path, tree_leaves: list | None = None) -> tuple[list, list]:
     """表达矩阵 → DATASET_HEATMAP。行序校验：给了 tree_leaves 就强制按树序重排+查漏。"""
     lines = Path(matrix_tsv).read_text(encoding="utf-8").splitlines()
     header = lines[0].split("\t")

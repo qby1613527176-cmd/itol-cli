@@ -35,7 +35,7 @@ ALIASES = {
 SEPARATORS = {"SPACE": None, "TAB": "\t", "COMMA": ","}  # None = 任意空白
 # 官方允许 hex / rgb() / rgba()（COLORSTRIP 模板实证：rgba(0,255,0,0.5) 合法）
 HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
-RGB_RE = re.compile(r"^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*[\d.]+\s*)?\)$", re.I)
+RGB_RE = re.compile(r"^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*[\d.]+\s*)?\)$", re.IGNORECASE)
 
 
 def _is_color(s: str) -> bool:
@@ -76,7 +76,7 @@ class LintReport:
         return "\n".join([head] + lines)
 
 
-def _detect_separator(header_lines: list[str]) -> tuple[str, object]:
+def _detect_separator(header_lines: list[str]) -> tuple[str, str | None]:
     for ln in header_lines:
         parts = ln.split(None, 1)
         if parts and parts[0].upper() == "SEPARATOR" and len(parts) == 2:

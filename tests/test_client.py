@@ -1,7 +1,6 @@
 """client 层测试——上传响应解析 + zip 构造 + 导出错误分层（不真打网络）。"""
 import io
 import zipfile
-from pathlib import Path
 
 import pytest
 

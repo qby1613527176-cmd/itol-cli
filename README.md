@@ -40,6 +40,7 @@ itol upload tree.tree ann1.txt --project MyProj  # 上传（需订阅+key）
 | `selection` 选择压力标注树 | ω 表 tsv（node TAB omega） | TREE_COLORS（枝按 ω 蓝→白→红渐变） |
 | `connections` 共线连线树/tanglegram | 配对表 tsv（node1 TAB node2 [color] [label]） | DATASET_CONNECTION |
 | `timescale` 时间树地质年代轴 | 区间表 tsv（name TAB start TAB end [color]） | DATASET_TIMESCALE |
+| `pav` 泛基因组 PAV 联树 | 0/1 矩阵 tsv（首列=树叶名） | DATASET_BINARY |
 
 ## 错误契约
 

@@ -11,9 +11,17 @@ from . import __version__
 from .client import EXPORT_FORMATS, ItolClient
 from .errors import ItolError
 from .lint import lint_paths
-from .templates import (BOOTSTRAP_EXPORT_PRESET, TEMPLATES, write_connections,
-                        write_domains, write_heatmap, write_selection,
-                        write_subfamily, write_timescale)
+from .templates import (
+    BOOTSTRAP_EXPORT_PRESET,
+    TEMPLATES,
+    write_connections,
+    write_domains,
+    write_heatmap,
+    write_pav,
+    write_selection,
+    write_subfamily,
+    write_timescale,
+)
 
 
 def _load_key() -> str:
@@ -44,14 +52,13 @@ def doctor() -> None:
     """环境自检：API key / 端点存活 / 导出探测。"""
     key = _load_key()
     click.echo(f"{'✅' if key else '⚠️ '} API key: {'已配置' if key else '未配置（上传/删除不可用，导出不受影响）'}")
-    c = _client()
     # 端点探活：无参 GET batch_uploader → 预期 ERR 0（key 缺失）即端点通（调研实证形态）
     try:
         import requests
         r = requests.get("https://itol.embl.de/batch_uploader.cgi", timeout=15)
         alive = "ERR 0" in r.text or "API key" in r.text
         click.echo(f"{'✅' if alive else '❌'} 上传端点存活: {alive}（HTTP {r.status_code}）")
-    except Exception as e:
+    except requests.RequestException as e:
         click.echo(f"❌ 上传端点不可达: {e}")
     click.echo("导出端点免认证（公开树按 ID 导出）：itol export <tree_id> --format svg --out tree.svg")
 
@@ -112,6 +119,18 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path) -> None:
         click.echo("已生成：")
         for p in outs:
             click.echo(f"  {p}")
+    elif scenario == "pav":
+        leaves = None
+        if tree:
+            import re
+            text = tree.read_text(encoding="utf-8")
+            leaves = [t.strip().strip("'\"") for t in re.findall(r"([A-Za-z0-9_.\-|]+):[0-9.eE\-]+", text)]
+        outs, missing = write_pav(input_file, outdir, leaves)
+        click.echo("已生成：")
+        for p in outs:
+            click.echo(f"  {p}")
+        if missing:
+            click.echo(f"⚠️ 树中 {len(missing)} 个叶在矩阵里找不到（已跳过）", err=True)
     elif scenario == "heatmap":
         leaves = None
         if tree:

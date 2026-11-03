@@ -29,7 +29,7 @@ def test_selection_basic(tmp_path):
     assert "GeneA\tbranch\t#2166AC" in text          # ω=0 → 纯蓝
     assert "GeneB|GeneC\tbranch\t" in text            # LCA 写法透传
     # ω=1.8 在 1..3 区间插值向红，颜色应在白红之间
-    line = [ln for ln in text.splitlines() if ln.startswith("GeneB|GeneC")][0]
+    line = next(ln for ln in text.splitlines() if ln.startswith("GeneB|GeneC"))
     c = line.split("\t")[2]
     r, g, b = int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)
     assert r > b and g < r                              # 偏红系
@@ -86,3 +86,32 @@ def test_lint_timescale_catches_inverted(tmp_path):
     rep = lint_file(p)
     assert not rep.ok
     assert any("start" in i.message for i in rep.errors)
+
+
+# ---- pav ----
+from itol_cli.templates import write_pav
+
+
+def test_pav_basic(tmp_path):
+    tsv = _tsv(tmp_path, "gene\tg1\tg2\tg3\nGeneA\t1\t0\t1\nGeneB\t0\t0\t1\n")
+    outs, missing = write_pav(tsv, tmp_path / "out")
+    text = outs[0].read_text(encoding="utf-8")
+    assert text.startswith("DATASET_BINARY\nSEPARATOR TAB\nDATASET_LABEL\tPAV")
+    assert "FIELD_LABELS\tg1,g2,g3" in text
+    assert missing == []
+    rep = lint_file(outs[0])
+    assert rep.ok, rep.summary()
+
+
+def test_pav_rejects_non_binary(tmp_path):
+    with pytest.raises(ValueError, match="0/1"):
+        write_pav(_tsv(tmp_path, "gene\tg1\nGeneA\t2\n"), tmp_path / "o")
+
+
+def test_pav_tree_order_and_missing(tmp_path):
+    tsv = _tsv(tmp_path, "gene\tg1\nGeneA\t1\nGeneB\t0\n")
+    outs, missing = write_pav(tsv, tmp_path / "out", ["GeneB", "GeneA", "GeneX"])
+    lines = [ln for ln in outs[0].read_text(encoding="utf-8").splitlines() if ln and not ln.startswith(("D", "S", "C", "F"))]
+    # 树序重排：GeneB 在前
+    assert lines[0].startswith("GeneB")
+    assert missing == ["GeneX"]
