@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .account import AccountClient, load_config
 from .client import EXPORT_FORMATS, ItolClient
 from .errors import ItolError
 from .lint import lint_paths
@@ -226,6 +227,71 @@ def templates() -> None:
         click.echo(f"\n■ {t.name} — {t.summary}")
         click.echo(f"  输入：{t.inputs}")
         click.echo(f"  产出：{'；'.join(t.outputs)}")
+
+
+# ---------------- 账号通路（免费账号可用，2026-11-03 破解登录/文本上传）----------------
+
+
+@main.command()
+@click.option("--user", default=None, help="iTOL 账号（缺省读 ~/.itol-cli/config 的 ITOL_USER 或提示输入）")
+@click.option("--password", default=None, help="密码（缺省读 config 的 ITOL_PASSWORD 或提示输入）")
+def login(user: str | None, password: str | None) -> None:
+    """登录 iTOL 账号（会话 cookie 存 ~/.itol-cli/session_cookies，600 权限，约 2h 有效）。"""
+    cfg = load_config()
+    user = user or cfg.get("ITOL_USER") or click.prompt("iTOL 账号")
+    password = password or cfg.get("ITOL_PASSWORD") or click.prompt("密码", hide_input=True)
+    acc = AccountClient()
+    try:
+        name = acc.login(user, password)
+        click.echo(f"✅ 已登录：{name}（会话已保存到 ~/.itol-cli/session_cookies）")
+    except ItolError as e:
+        click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1) from None
+
+
+@main.command()
+def whoami() -> None:
+    """查看当前登录账号。"""
+    acc = AccountClient()
+    if not acc.logged_in():
+        click.echo("❌ 未登录（先 itol login）", err=True)
+        raise SystemExit(1)
+    name = acc.whoami()
+    click.echo(f"✅ {name}" if name else "⚠️ 会话可能已过期，重新 itol login")
+
+
+@main.command()
+def workspaces() -> None:
+    """列出账号的工作区/项目/树（工作区→项目→树三层）。"""
+    acc = AccountClient()
+    try:
+        ws = acc.workspaces()
+        for w in ws:
+            click.echo(f"■ 工作区 {w.get('t', '?')} (id={w.get('id', '?')})")
+            for p in w.get("p", []):
+                n = len(p.get("data", []))
+                click.echo(f"  └ 项目 {p.get('t', '?')} (id={p.get('id', '?')})：{n} 棵树")
+                for t in p.get("data", []):
+                    click.echo(f"      └ {t.get('t', '?')} (id={t.get('id', '?')})")
+    except ItolError as e:
+        click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1) from None
+
+
+@main.command(name="upload-tree")
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--project", "project_id", required=True, help="目标项目 ID（itol workspaces 查）")
+@click.option("--name", default=None, help="树名（缺省用文件名）")
+def upload_tree(tree_file: Path, project_id: str, name: str | None) -> None:
+    """把树文本上传到账号项目（免费账号可用；注解挂树需订阅 batch_uploader 或浏览器自动化）。"""
+    acc = AccountClient()
+    name = name or tree_file.stem
+    try:
+        tid = acc.upload_tree_text(project_id, name, tree_file.read_text(encoding="utf-8"))
+        click.echo(f"✅ 树已上传：id={tid}\n   查看：https://itol.embl.de/tree/{tid}")
+    except ItolError as e:
+        click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
