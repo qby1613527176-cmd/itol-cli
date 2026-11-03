@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "itol-cli"
+version = "0.1.0"
+description = "iTOL command-line toolkit: annotation template generation, lint, upload/export pipeline"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{name = "MOSS"}]
+keywords = ["itol", "phylogenetic", "tree", "annotation", "bioinformatics"]
+dependencies = [
+    "click>=8.0",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff", "mypy"]
+
+[project.scripts]
+itol = "itol_cli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["itol_cli*"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
