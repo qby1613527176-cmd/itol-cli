@@ -311,14 +311,16 @@ def upload_tree(tree_file: Path, project_id: str, name: str | None) -> None:
 @click.option("--out", required=True, type=click.Path(path_type=Path), help="输出 SVG 路径")
 @click.option("--png", "png", default=None, type=click.Path(path_type=Path), help="可选 PNG 路径（需 rsvg-convert）")
 @click.option("--wait", default=60, show_default=True, help="iTOL 数据模型等待超时（秒）")
-def render(tree_id: str, anno: tuple, out: Path, png: Path | None, wait: int) -> None:
+@click.option("--mode", default=None, type=click.Choice(["rect", "circular", "unrooted"]),
+              help="显示模式：矩形/环形/无根（缺省用 iTOL 默认：<100 叶矩形，否则环形）")
+def render(tree_id: str, anno: tuple, out: Path, png: Path | None, wait: int, mode: str | None) -> None:
     """浏览器渲染路：注入注解到 iTOL 树页出带注解图（免费账号可用；Xvfb+playwright，自动套虚拟显示）。
 
     需本机有 Chrome/Chromium；无显示环境自动 xvfb-run 包裹。出带 colorstrip 等真数据集的图唯一程序化路。
     """
     _render.ensure_display(sys.argv[1:])  # 无 DISPLAY 自动 xvfb-run 重跑本命令
     try:
-        result = _render.render(tree_id, list(anno), out, png, wait)
+        result = _render.render(tree_id, list(anno), out, png, wait, mode=mode)
     except ItolError as e:
         click.echo(f"❌ {e}", err=True)
         raise SystemExit(1) from None

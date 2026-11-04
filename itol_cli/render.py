@@ -20,6 +20,10 @@ from .errors import ItolError
 
 CHROME = "/usr/bin/google-chrome"
 
+# 显示模式 → l1I1l.III111I 键值（1矩形/2环形/3无根）。JS 逆向实证：llII1ll(mode) 是官方设置函数
+# （@26599，全代码库反复调用）；@538204 实证 <100 叶强制矩形，≥100 叶默认环形。
+DISPLAY_MODES = {"rect": 1, "circular": 2, "unrooted": 3}
+
 
 def ensure_display(argv: list[str]) -> None:
     """有 DISPLAY 直接返回；无则 xvfb-run 重跑本命令（结束后 SystemExit 替换当前进程）。"""
@@ -47,7 +51,7 @@ def _ensure_dataset_label(path: str) -> str:
 
 def render(tree_id: str, anno_files: list, out_svg: str | Path,
            out_png: str | Path | None = None, wait: int = 60,
-           viewport: tuple[int, int] = (1600, 1200)) -> dict:
+           viewport: tuple[int, int] = (1600, 1200), mode: str | None = None) -> dict:
     """核心渲染：加载树页 → 注入注解 → exportSVG。
 
     返回 {injected:{文件名:bool}, svg, svg_chars, pageerrors, png?, png_warn?, ok}。
@@ -83,6 +87,10 @@ def render(tree_id: str, anno_files: list, out_svg: str | Path,
             if not ready:
                 raise ItolError("IT003", f"iTOL 树页数据模型 {wait}s 未就绪",
                                 diagnosis="查树 ID 有效性/网络；大树（千叶级）可加 --wait")
+            # 显示模式切换（官方函数 llII1ll，含重算+重绘）
+            if mode:
+                page.evaluate("(m) => llII1ll(m)", DISPLAY_MODES[mode])
+                time.sleep(2)  # 等模式切换重渲
             injected: dict[str, bool] = {}
             for f in anno_files:
                 b64 = base64.b64encode(_ensure_dataset_label(f).encode()).decode()
