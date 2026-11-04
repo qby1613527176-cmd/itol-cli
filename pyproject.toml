@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "ruff", "mypy"]
+render = ["playwright>=1.40"]  # itol render 浏览器自动化渲染路（另需系统 Chrome/Chromium + xvfb + rsvg-convert）
 
 [project.scripts]
 itol = "itol_cli.cli:main"

@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from . import render as _render
 from .account import AccountClient, load_config
 from .client import EXPORT_FORMATS, ItolClient
 from .errors import ItolError
@@ -292,6 +293,36 @@ def upload_tree(tree_file: Path, project_id: str, name: str | None) -> None:
     except ItolError as e:
         click.echo(f"❌ {e}", err=True)
         raise SystemExit(1) from None
+
+
+@main.command()
+@click.argument("tree_id")
+@click.option("--anno", multiple=True, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="注解文件（可多个；DATASET_* 缺 DATASET_LABEL 会自动补）")
+@click.option("--out", required=True, type=click.Path(path_type=Path), help="输出 SVG 路径")
+@click.option("--png", "png", default=None, type=click.Path(path_type=Path), help="可选 PNG 路径（需 rsvg-convert）")
+@click.option("--wait", default=60, show_default=True, help="iTOL 数据模型等待超时（秒）")
+def render(tree_id: str, anno: tuple, out: Path, png: Path | None, wait: int) -> None:
+    """浏览器渲染路：注入注解到 iTOL 树页出带注解图（免费账号可用；Xvfb+playwright，自动套虚拟显示）。
+
+    需本机有 Chrome/Chromium；无显示环境自动 xvfb-run 包裹。出带 colorstrip 等真数据集的图唯一程序化路。
+    """
+    _render.ensure_display(sys.argv[1:])  # 无 DISPLAY 自动 xvfb-run 重跑本命令
+    try:
+        result = _render.render(tree_id, list(anno), out, png, wait)
+    except ItolError as e:
+        click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1) from None
+    for f, ok in result["injected"].items():
+        click.echo(f"{'✅' if ok else '⚠️ '} 注入 {f}")
+    click.echo(f"✅ SVG 已出：{result['svg']}（{result['svg_chars']} 字符）")
+    if "png" in result:
+        click.echo(f"✅ PNG 已出：{result['png']}")
+    if "png_warn" in result:
+        click.echo(f"⚠️ {result['png_warn']}", err=True)
+    if not result["ok"]:
+        click.echo("⚠️ 部分注解未确认注入（可能静默拒绝——查 DATASET_LABEL 是否缺失）", err=True)
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":
