@@ -108,7 +108,7 @@ def render(tree_id: str, anno_files: list, out_svg: str | Path,
                             "ok": all(injected.values())}
             if out_png:
                 if shutil.which("rsvg-convert"):
-                    subprocess.run(["rsvg-convert", "-w", "1600", str(out_svg), "-o", str(out_png)],
+                    subprocess.run(["rsvg-convert", "-b", "white", "-w", "1600", str(out_svg), "-o", str(out_png)],
                                    check=True, capture_output=True)
                     result["png"] = str(out_png)
                 else:
