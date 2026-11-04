@@ -10,7 +10,7 @@ import click
 from . import __version__
 from . import render as _render
 from .account import AccountClient, load_config
-from .client import EXPORT_FORMATS, ItolClient
+from .client import EXPORT_FORMATS, EXPORT_PRESETS, ItolClient
 from .errors import ItolError
 from .lint import lint_paths
 from .templates import (
@@ -180,11 +180,18 @@ def upload(tree_file: Path, annotations: list, project: str, tree_name: str) -> 
 @click.argument("tree_id")
 @click.option("--format", "fmt", type=click.Choice(EXPORT_FORMATS), default="svg", show_default=True)
 @click.option("-o", "--out", type=click.Path(path_type=Path), default=None)
-@click.option("--param", multiple=True, help="透传显示参数 key=value（如 --param display_mode=2 圆形树）")
-def export(tree_id: str, fmt: str, out: Path, param: list) -> None:
-    """导出树图（免认证）。默认 SVG——批量导出无 dpi 参数，位图高分辨率是缺口。"""
-    params = {}
-    for kv in param:
+@click.option("--preset", "presets", multiple=True, type=click.Choice(sorted(EXPORT_PRESETS)),
+              help="参数预设（可叠加）：publication/circular/unrooted/cladogram/slanted/bootstrap*/timescale")
+@click.option("--param", multiple=True, help="透传显示参数 key=value（覆盖预设同键；如 --param display_mode=2 圆形树）")
+def export(tree_id: str, fmt: str, out: Path, presets: tuple, param: list) -> None:
+    """导出树图（免认证）。默认 SVG——批量导出无 dpi 参数，位图高分辨率是缺口。
+
+    83 个显示参数全表见 docs/EXPORT_PARAMS.md；预设即参数组合，--param 可精修覆盖。
+    """
+    params: dict = {}
+    for pname in presets:  # 先铺预设
+        params.update(EXPORT_PRESETS[pname])
+    for kv in param:  # 再 --param 覆盖
         if "=" not in kv:
             raise click.UsageError(f"--param 需要 key=value 形态：{kv!r}")
         k, v = kv.split("=", 1)

@@ -25,6 +25,21 @@ DELETE_URL = "https://itol.embl.de/batch_delete.cgi"
 TREE_PAGE = "https://itol.embl.de/tree/{tid}"
 
 EXPORT_FORMATS = ("svg", "eps", "pdf", "png", "newick", "nexus", "phyloxml")
+
+# 导出参数预设（2026-11-04 深挖 83 个 batch_downloader 参数后固化，全表见 docs/EXPORT_PARAMS.md）
+# --preset 可叠加，--param key=value 优先级更高（后者覆盖前者同键）
+EXPORT_PRESETS = {
+    "publication": {"align_labels": "1", "dashed_lines": "1", "current_font_size": "14"},
+    "circular": {"display_mode": "2"},
+    "unrooted": {"display_mode": "3"},
+    "cladogram": {"ignore_branch_length": "1"},
+    "slanted": {"display_mode": "1", "ignore_branch_length": "1", "slanted_normal": "1"},
+    "bootstrap": {"bootstrap_display": "1", "bootstrap_type": "1"},
+    "bootstrap-color": {"bootstrap_display": "1", "bootstrap_type": "3",
+                        "bootstrap_min_color": "#0000ff", "bootstrap_max_color": "#ff0000"},
+    "bootstrap-width": {"bootstrap_display": "1", "bootstrap_type": "4"},
+    "timescale": {"internal_scale": "1", "internalScaleAxis": "1", "internalScaleGrid": "1"},
+}
 # 导出成功时的二进制 MIME（实测规格）；text/html|text/plain = 失败
 _EXPORT_OK_MIME = ("image/", "application/pdf", "application/postscript", "application/octet-stream")
 
