@@ -85,7 +85,9 @@ def lint(files: list) -> None:
 @click.option("-o", "--outdir", type=click.Path(path_type=Path), default=Path.cwd(), show_default=True)
 @click.option("--tree", type=click.Path(exists=True, path_type=Path), default=None,
               help="树文件（newick）；heatmap 场景用于行序校验重排")
-def gen(scenario: str, input_file: Path, outdir: Path, tree: Path) -> None:
+@click.option("--palette", "palette_name", default="npg", type=click.Choice(["npg", "okabeito"]),
+              show_default=True, help="亚家族调色板：npg（出版级，自评胜出）/ okabeito（色盲安全）")
+def gen(scenario: str, input_file: Path, outdir: Path, tree: Path, palette_name: str) -> None:
     """场景模板生成（itol templates 看全量场景与输入规范）。"""
     spec = TEMPLATES[scenario]
     if scenario == "bootstrap":
@@ -96,7 +98,7 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path) -> None:
     if not input_file:
         raise click.UsageError(f"itol gen {scenario} <输入文件>\n输入规范：{spec.inputs}")
     if scenario == "subfamily":
-        outs = write_subfamily(input_file, outdir)
+        outs = write_subfamily(input_file, outdir, palette_name=palette_name)
         click.echo("已生成：")
         for p in outs:
             click.echo(f"  {p}")

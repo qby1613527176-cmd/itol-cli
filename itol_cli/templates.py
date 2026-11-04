@@ -10,20 +10,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-# Okabe-Ito 色盲安全色板（agent6 建议固化默认审美）
+# NPG（Nature Publishing Group）出版级色板——2026-11-04 ARR-B 看图打分自评胜出（8/10）
+# 和谐专业、亚家族区分度好，定为亚家族主图默认
+NPG = ["#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#F39B7F",
+       "#8491B4", "#91D1C2", "#DC0000", "#7E6148", "#B09C85"]
+
+# Okabe-Ito 色盲安全色板（agent6 建议固化）——可及性优先时的备选（--palette okabeito）
 OKABE_ITO = ["#E69F00", "#56B4E9", "#009E73", "#F0E442",
              "#0072B2", "#D55E00", "#CC79A7", "#999999"]
 
-# 扩展色板：Okabe-Ito 8 色 + Tol bright 10 色（>8 分组时用，17 亚家族实证需求）
-PALETTE_18 = OKABE_ITO + [
+NAMED_PALETTES = {"npg": NPG, "okabeito": OKABE_ITO}
+
+# 扩展色板：NPG 10 色 + Tol bright 8 色（>10 分组时用，17 亚家族实证需求）
+PALETTE_18 = NPG + [
     "#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE",
     "#AA3377", "#BBBBBB", "#333333", "#7FCD9B", "#C9A0DC",
 ]
 
 
-def palette_for(n: int) -> list:
-    """按分组数给色板：≤8 用 Okabe-Ito，>8 用 18 色扩展，>18 循环（告警由调用方决定）。"""
-    return PALETTE_18 if n > len(OKABE_ITO) else OKABE_ITO
+def palette_for(n: int, name: str = "npg") -> list:
+    """按分组数给色板：≤base 用 base（默认 NPG，可选 okabeito），>base 用 18 色扩展。"""
+    base = NAMED_PALETTES.get(name, NPG)
+    return PALETTE_18 if n > len(base) else base
 
 
 @dataclass
@@ -83,7 +91,8 @@ TEMPLATES = {
 }
 
 
-def write_subfamily(groups_tsv: Path, outdir: Path, palette: list | None = None) -> list:
+def write_subfamily(groups_tsv: Path, outdir: Path, palette: list | None = None,
+                    palette_name: str = "npg") -> list:
     """亚家族着色：分组 tsv → TREE_COLORS + COLORSTRIP 两个注解文件。"""
     groups: dict = {}
     order: list = []
@@ -96,7 +105,7 @@ def write_subfamily(groups_tsv: Path, outdir: Path, palette: list | None = None)
             groups[g] = None  # 占位，色板后定
             order.append(g)
         groups.setdefault("_rows", []).append((nid.strip(), g))
-    palette = palette or palette_for(len(order))
+    palette = palette or palette_for(len(order), palette_name)
     for i, g in enumerate(order):
         groups[g] = palette[i % len(palette)]
     rows = groups["_rows"]
