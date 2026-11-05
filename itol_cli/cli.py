@@ -582,7 +582,7 @@ def completion(shell_name: str) -> None:
     import sys as _sys
     env = dict(_os.environ, _ITOL_COMPLETE=f"{shell_name}_source")
     prog = _sys.argv[0] if _sys.argv and _sys.argv[0] else "itol"
-    out = subprocess.run([prog], env=env, capture_output=True, text=True)
+    out = subprocess.run([prog], check=False, env=env, capture_output=True, text=True)
     click.echo(out.stdout)
 
 
