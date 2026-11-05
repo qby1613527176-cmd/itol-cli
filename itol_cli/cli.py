@@ -601,7 +601,7 @@ def commands(fmt: str) -> None:
             for name, sub in cmd.commands.items():
                 walk(sub, f"{prefix} {name}".strip())
         else:
-            params = []
+            params: list[dict] = []
             for p in cmd.params:
                 if isinstance(p, _click.Option):
                     params.append({"flag": p.opts[-1] if p.opts else p.name, "help": (p.help or "").strip(),
