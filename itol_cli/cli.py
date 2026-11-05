@@ -10,6 +10,7 @@ import click
 
 from . import __version__
 from . import render as _render
+from . import tree as _tree
 from .account import AccountClient, load_config
 from .client import EXPORT_FORMATS, EXPORT_PRESETS, ItolClient
 from .errors import ItolError
@@ -25,6 +26,15 @@ from .templates import (
     write_subfamily,
     write_timescale,
 )
+
+
+def _read_idset(spec: str | None) -> set[str] | None:
+    """读 ID 集合：逗号分隔字符串，或 @文件（每行一个 ID）。"""
+    if not spec:
+        return None
+    if spec.startswith("@"):
+        return {ln.strip() for ln in Path(spec[1:]).read_text(encoding="utf-8").splitlines() if ln.strip()}
+    return {x.strip() for x in spec.split(",") if x.strip()}
 
 
 def _load_key() -> str:
@@ -245,6 +255,129 @@ def fetch(tree_id: str, out: Path | None, ds: str | None) -> None:
                f"枝长 {'有' if param.get('has_brl') else '无'}")
     if info.get("datasets"):
         click.echo(f"附带数据集：{list(info['datasets'].keys())}")
+
+
+@main.group()
+def tree() -> None:
+    """树文件预处理/校验/速览（上 iTOL 前的高频操作，对标 gotree/nwkit/PhyKIT）。"""
+
+
+@tree.command()
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def validate(tree_file: Path) -> None:
+    """校验树文件（括号/重名/负支长/方言/不可见字符）。对标 PyiTOL validate。"""
+    text = tree_file.read_text(encoding="utf-8", errors="replace")
+    issues = _tree.validate_tree_text(text)
+    if issues:
+        for i in issues:
+            click.echo(f"⚠️  {i}", err=True)
+        click.echo(f"❌ {tree_file}：{len(issues)} 个问题", err=True)
+        sys.exit(1)
+    click.echo(f"✅ {tree_file}：树结构校验通过")
+
+
+@tree.command()
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def stats(tree_file: Path) -> None:
+    """树统计摘要（叶数/支长/支持度/多叉/树高）。对标 gotree stats / PhyKIT。"""
+    try:
+        st = _tree.tree_stats_text(tree_file.read_text(encoding="utf-8", errors="replace"))
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    click.echo(f"叶 {st['tips']}  内部节点 {st['internal']}  多叉 {st['polytomy']}  树高 {st['tree_height']:.4g}")
+    if st["has_brl"]:
+        click.echo(f"支长：总长 {st['sum_brlen']:.4g}  均值 {st['mean_brlen']:.4g}")
+    if st["n_support"]:
+        click.echo(f"支持度：{st['n_support']} 个内部节点，最低 {st['min_support']}")
+
+
+@tree.command(name="peek")
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def tree_peek(tree_file: Path) -> None:
+    """终端 ASCII 速览树结构（SSH/CI 无浏览器也能看）。对标 gotree draw text。"""
+    try:
+        _, root = _tree.load_tree(tree_file)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    click.echo(_tree.draw_ascii(root))
+
+
+@tree.command()
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--outgroup", default=None, help="外群叶标签（逗号分隔），定根到其与内群分界")
+@click.option("--midpoint", is_flag=True, help="中点定根")
+@click.option("-o", "--out", required=True, type=click.Path(path_type=Path), help="输出 newick 路径")
+def reroot(tree_file: Path, outgroup: str | None, midpoint: bool, out: Path) -> None:
+    """定根（外群/中点）。对标 gotree reroot。"""
+    try:
+        _, root = _tree.load_tree(tree_file)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    if midpoint:
+        newroot = _tree.midpoint_reroot(root)
+    elif outgroup:
+        try:
+            newroot = _tree.reroot_outgroup(root, {x.strip() for x in outgroup.split(",")})
+        except ItolError as e:
+            click.echo(str(e), err=True)
+            sys.exit(1)
+    else:
+        click.echo("❌ 需 --outgroup 或 --midpoint", err=True)
+        sys.exit(2)
+    out.write_text(newroot.to_newick() + ";\n", encoding="utf-8")
+    click.echo(f"✅ 定根后树已存：{out}")
+
+
+@tree.command()
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--keep", default=None, help="保留这些叶（逗号分隔，或 @文件 每行一个）")
+@click.option("--remove", default=None, help="删这些叶（逗号分隔，或 @文件 每行一个）")
+@click.option("-o", "--out", required=True, type=click.Path(path_type=Path), help="输出 newick 路径")
+def prune(tree_file: Path, keep: str | None, remove: str | None, out: Path) -> None:
+    """剪枝：保留/删除指定叶。对标 gotree prune。"""
+    try:
+        _, root = _tree.load_tree(tree_file)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    keepset = _read_idset(keep) if keep else None
+    removeset = _read_idset(remove) if remove else None
+    if keepset is None and removeset is None:
+        click.echo("❌ 需 --keep 或 --remove", err=True)
+        sys.exit(2)
+    try:
+        newroot = _tree.prune(root, keep=keepset, remove=removeset)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    out.write_text(newroot.to_newick() + ";\n", encoding="utf-8")
+    click.echo(f"✅ 剪枝后树已存：{out}（{len(newroot.leaves())} 叶）")
+
+
+@tree.command()
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--map", "mapfile", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="重命名映射（TSV/空白：旧名 新名）")
+@click.option("-o", "--out", required=True, type=click.Path(path_type=Path), help="输出 newick 路径")
+def rename(tree_file: Path, mapfile: Path, out: Path) -> None:
+    """按映射表重命名叶标签。对标 gotree rename --map。"""
+    try:
+        _, root = _tree.load_tree(tree_file)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    mapping = {}
+    for line in mapfile.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            parts = line.split("\t") if "\t" in line else line.split()
+            if len(parts) >= 2:
+                mapping[parts[0]] = parts[1]
+    n = _tree.rename(root, mapping)
+    out.write_text(root.to_newick() + ";\n", encoding="utf-8")
+    click.echo(f"✅ 重命名 {n}/{len(root.leaves())} 个叶标签：{out}")
 
 
 @main.command()
