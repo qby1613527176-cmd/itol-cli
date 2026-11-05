@@ -440,3 +440,68 @@ def _flip_path(chain: list[Node], new_root: Node, first_bl: float) -> None:
             gp.children.remove(old_root)
             only.parent = gp
             gp.children.append(only)
+
+
+def tree_to_svg(root: Node, width: int = 900, leaf_h: int = 22, use_brl: bool = True) -> str:
+    """纯 Python 本地树→SVG 渲染（零依赖、离线）。对标 gotree draw svg / nw_display。
+
+    矩形系统树（phylogram：支长真实；use_brl=False 时 cladogram：等深）。
+    供 render --backend local 离线降级/快速预览。
+    """
+    leaves = root.leaves()
+    n = len(leaves)
+    height = max(80, n * leaf_h + 60)
+    # y 坐标：叶按顺序，内部节点=子节点均值
+    ymap: dict[int, float] = {}
+
+    def assign_y(node: Node) -> float:
+        if node.is_leaf:
+            ymap[id(node)] = 40 + leaves.index(node) * leaf_h
+        else:
+            assign_y_children = [assign_y(c) for c in node.children]
+            ymap[id(node)] = sum(assign_y_children) / len(assign_y_children)
+        return ymap[id(node)]
+    assign_y(root)
+    # x 坐标：累计支长（或等深）
+    xmax = 0.0
+
+    def assign_x(node: Node, acc: float) -> None:
+        nonlocal xmax
+        xmax = max(xmax, acc)
+        for c in node.children:
+            step = (c.bl or 0.0) if use_brl else 1.0
+            assign_x(c, acc + step)
+    assign_x(root, 0.0)
+    if xmax <= 0:
+        xmax = 1.0
+    draw_w = width - 180  # 留叶标签空间
+
+    def sx(acc: float) -> float:
+        return 20 + (acc / xmax) * draw_w
+
+    svg_open = f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" font-family="monospace" font-size="13">'
+    parts = [svg_open, f'<rect width="{width}" height="{height}" fill="white"/>']
+
+    def draw(node: Node, acc: float) -> None:
+        x0 = sx(acc)
+        y0 = ymap[id(node)]
+        for c in node.children:
+            step = (c.bl or 0.0) if use_brl else 1.0
+            x1 = sx(acc + step)
+            y1 = ymap[id(c)]
+            # 横线（父→子的支长）
+            parts.append(f'<line x1="{x0:.1f}" y1="{y1:.1f}" x2="{x1:.1f}" y2="{y1:.1f}" stroke="#333" stroke-width="1.2"/>')
+            # 竖线（父节点连接各子的 y 范围）
+            parts.append(f'<line x1="{x0:.1f}" y1="{y0:.1f}" x2="{x0:.1f}" y2="{y1:.1f}" stroke="#333" stroke-width="1.2"/>')
+            draw(c, acc + step)
+        if node.is_leaf and node.name:
+            parts.append(f'<text x="{x0+5:.1f}" y="{y0+4:.1f}" fill="#111">{_xml_escape(node.name)}</text>')
+        elif node.name and not node.is_leaf:
+            parts.append(f'<text x="{x0+3:.1f}" y="{y0-4:.1f}" fill="#888" font-size="11">{_xml_escape(node.name)}</text>')
+    draw(root, 0.0)
+    parts.append('</svg>')
+    return "\n".join(parts)
+
+
+def _xml_escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")

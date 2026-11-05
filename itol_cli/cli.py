@@ -497,6 +497,25 @@ def rename(tree_file: Path, mapfile: Path, out: Path) -> None:
     click.echo(f"✅ 重命名 {n}/{len(root.leaves())} 个叶标签：{out}")
 
 
+@tree.command(name="render")
+@click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("-o", "--out", required=True, type=click.Path(path_type=Path), help="输出 SVG 路径")
+@click.option("--cladogram", is_flag=True, help="等深枝（cladogram）；缺省 phylogram 支长真实")
+@click.option("--width", default=900, show_default=True, help="画布宽度")
+def tree_render(tree_file: Path, out: Path, cladogram: bool, width: int) -> None:
+    """本地渲染树→SVG（零网络/零浏览器/零依赖，离线降级）。对标 gotree draw svg / nw_display。
+
+    itol render 的轻量 fallback：CI/断网/批量场景快速出基础树图（不含注解数据集）。
+    """
+    try:
+        _, root = _tree.load_tree(tree_file)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    out.write_text(_tree.tree_to_svg(root, width=width, use_brl=not cladogram), encoding="utf-8")
+    click.echo(f"✅ 本地 SVG 已出：{out}（{len(root.leaves())} 叶，{'cladogram' if cladogram else 'phylogram'}）")
+
+
 @main.command()
 @click.argument("tree_id")
 @click.confirmation_option(prompt="删除不可恢复，确认？")
