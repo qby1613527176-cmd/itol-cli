@@ -10,6 +10,7 @@
 """
 import json
 import re
+import time
 from http.cookiejar import LoadError, MozillaCookieJar
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from .errors import ItolError
 LOGIN_URL = "https://itol.embl.de/login.cgi"
 PERSONAL_URL = "https://itol.embl.de/personal_page.cgi"
 TREE_UPLOADER_URL = "https://itol.embl.de/ajax/personal/tree_uploader.cgi"
+EXPORT_CGI_URL = "https://itol.embl.de/ajax/export.cgi"
+EXPORT_QUEUE_URL = "https://itol.embl.de/ajax/exportQueueCheck.cgi"
+DOWNLOAD_URL = "https://itol.embl.de/download.cgi"
 CONFIG_DIR = Path.home() / ".itol-cli"
 CONFIG_FILE = CONFIG_DIR / "config"
 SESSION_FILE = CONFIG_DIR / "session_cookies"
@@ -118,3 +122,40 @@ class AccountClient:
         if not tid:
             raise ItolError("IT005", f"上传未返回树 ID：{d!r}")
         return str(tid)
+
+    # ---- 高分辨率位图导出（export.cgi 异步队列，免费账号实证可用）----
+    def export_hires_png(self, svg_text: str, tree_id: str, dpi: int = 300,
+                         margin: int = 0, full_image: bool = True, wait: int = 120) -> bytes:
+        """POST export.cgi（q=SVG XML, dpi≤1000）→ 轮询队列 → download.cgi 取高 DPI PNG。
+
+        2026-11-05 黑客线 E2E 实证：export.cgi 队列是补 batch_downloader 无 dpi 缺口的路。
+        同会话一次只能排一个导出任务；fmt=png 唯一位图格式。
+        """
+        if not self.logged_in():
+            raise ItolError("IT004", "高分辨率导出需登录（先 itol login）")
+        r = self.session.post(EXPORT_CGI_URL, data={
+            "id": tree_id, "nm": "itol-cli", "shared": "0", "fmt": "png",
+            "dpi": str(dpi), "m": str(margin), "a": "1" if full_image else "0",
+            "q": svg_text}, timeout=60)
+        try:
+            j = r.json()
+        except ValueError:
+            raise ItolError("IT005", f"export.cgi 响应非 JSON：{r.text[:150]!r}") from None
+        qid = j.get("queueID")
+        if not qid:
+            raise ItolError("IT003", f"export.cgi 未入队：{j!r}")
+        for _ in range(max(1, wait // 5)):
+            time.sleep(5)
+            chk = self.session.post(EXPORT_QUEUE_URL, data={"id": qid}, timeout=30)
+            try:
+                cj = chk.json()
+            except ValueError:
+                continue
+            if cj.get("file"):
+                d = self.session.get(DOWNLOAD_URL, params={"f": cj["file"]}, timeout=60)
+                if d.content[:4] == b"\x89PNG":
+                    return d.content
+                raise ItolError("IT003", f"下载结果非 PNG：{d.text[:150]!r}")
+            if cj.get("inQueue") == -1:
+                raise ItolError("IT003", "export.cgi 转换失败（队列返回 inQueue=-1）")
+        raise ItolError("IT003", f"高分辨率导出超时（队列 {wait}s 未完成）")

@@ -313,14 +313,25 @@ def upload_tree(tree_file: Path, project_id: str, name: str | None) -> None:
 @click.option("--wait", default=60, show_default=True, help="iTOL 数据模型等待超时（秒）")
 @click.option("--mode", default=None, type=click.Choice(["rect", "circular", "unrooted"]),
               help="显示模式：矩形/环形/无根（缺省用 iTOL 默认：<100 叶矩形，否则环形）")
-def render(tree_id: str, anno: tuple, out: Path, png: Path | None, wait: int, mode: str | None) -> None:
+@click.option("--dpi", default=None, type=int,
+              help="高分辨率位图 dpi（≤1000；走服务端 export.cgi 队列，需 itol login，比本地 rsvg 更清）")
+def render(tree_id: str, anno: tuple, out: Path, png: Path | None, wait: int, mode: str | None,
+           dpi: int | None) -> None:
     """浏览器渲染路：注入注解到 iTOL 树页出带注解图（免费账号可用；Xvfb+playwright，自动套虚拟显示）。
 
     需本机有 Chrome/Chromium；无显示环境自动 xvfb-run 包裹。出带 colorstrip 等真数据集的图唯一程序化路。
+    --dpi 触发服务端高分辨率位图（export.cgi 队列，免费账号可用，上限 1000dpi）。
     """
     _render.ensure_display(sys.argv[1:])  # 无 DISPLAY 自动 xvfb-run 重跑本命令
     try:
-        result = _render.render(tree_id, list(anno), out, png, wait, mode=mode)
+        if dpi is not None and png is not None:
+            # 高分辨率位图：render 只出 SVG，再走 export.cgi 服务端队列转 PNG
+            result = _render.render(tree_id, list(anno), out, None, wait, mode=mode)
+            png.write_bytes(
+                AccountClient().export_hires_png(out.read_text(encoding="utf-8"), tree_id, dpi))
+            result["png"] = str(png)
+        else:
+            result = _render.render(tree_id, list(anno), out, png, wait, mode=mode)
     except ItolError as e:
         click.echo(f"❌ {e}", err=True)
         raise SystemExit(1) from None
