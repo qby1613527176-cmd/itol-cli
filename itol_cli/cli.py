@@ -573,6 +573,51 @@ def learn(template_file: Path, out: Path | None, new_data: Path | None) -> None:
         click.echo(js)
 
 
+@main.command()
+@click.argument("shell_name", type=click.Choice(["bash", "zsh", "fish"]), default="bash", required=False)
+def completion(shell_name: str) -> None:
+    """生成 shell 补全脚本（对标 csvtk genautocomplete）。用法：eval "$(itol completion bash)"，之后 itol <Tab> 可补全命令/选项。"""
+    import os as _os
+    import subprocess
+    import sys as _sys
+    env = dict(_os.environ, _ITOL_COMPLETE=f"{shell_name}_source")
+    prog = _sys.argv[0] if _sys.argv and _sys.argv[0] else "itol"
+    out = subprocess.run([prog], env=env, capture_output=True, text=True)
+    click.echo(out.stdout)
+
+
+@main.command()
+@click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="text", show_default=True)
+def commands(fmt: str) -> None:
+    """导出机器可读命令目录（对标 PhyKIT llms.txt/commands.json）——agent/脚本可发现性。
+
+    --format json 输出 {命令: {help, 参数}} 的 JSON，可做 llms.txt 的素材。
+    """
+    import click as _click
+    cat: dict = {}
+
+    def walk(cmd: _click.Command, prefix: str) -> None:
+        if isinstance(cmd, _click.Group):
+            for name, sub in cmd.commands.items():
+                walk(sub, f"{prefix} {name}".strip())
+        else:
+            params = []
+            for p in cmd.params:
+                if isinstance(p, _click.Option):
+                    params.append({"flag": p.opts[-1] if p.opts else p.name, "help": (p.help or "").strip(),
+                                   "default": None if p.default is None else str(p.default)})
+                elif isinstance(p, _click.Argument):
+                    params.append({"arg": p.name, "required": p.required})
+            cat[prefix] = {"help": (cmd.help or "").strip().splitlines()[0] if cmd.help else "", "params": params}
+
+    walk(main, "itol")
+    if fmt == "json":
+        click.echo(json.dumps(cat, ensure_ascii=False, indent=2))
+    else:
+        for name, meta in cat.items():
+            click.echo(f"{name}  —  {meta['help']}")
+
+
 @main.command(name="upload-tree")
 @click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--project", "project_id", required=True, help="目标项目 ID（itol workspaces 查）")
