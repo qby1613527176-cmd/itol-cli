@@ -28,6 +28,17 @@ from .templates import (
 )
 
 
+def _parse_groups_tsv(path: Path) -> dict[str, list[str]]:
+    """解析亚家族分组 TSV（叶ID<TAB>组名）→ {组名: [成员ID]}。供单系检验。"""
+    groups: dict[str, list[str]] = {}
+    for ln in Path(path).read_text(encoding="utf-8").splitlines():
+        if not ln.strip() or ln.startswith("#"):
+            continue
+        nid, _, g = ln.partition("\t")
+        groups.setdefault(g.strip() or "ungrouped", []).append(nid.strip())
+    return groups
+
+
 def _extract_data_ids(path: Path) -> list[str]:
     """提取 iTOL 注解文件 DATA 区第一列的节点 ID（跨 SEPARATOR 形态）。"""
     try:
@@ -177,6 +188,15 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path, palette_name:
     if not input_file:
         raise click.UsageError(f"itol gen {scenario} <输入文件>\n输入规范：{spec.inputs}")
     if scenario == "subfamily":
+        # 单系检验（给了树就验）：亚家族非单系是基因家族图的硬质量门，非单系大声警告
+        if tree is not None:
+            try:
+                _, root = _tree.load_tree(tree)
+                for gname, mono, note in _tree.monophyly_groups(root, _parse_groups_tsv(input_file)):
+                    click.echo(f"{'✅' if mono else '⚠️ '} 单系检验 {gname}：{note}",
+                               err=not mono)
+            except ItolError as e:
+                click.echo(f"⚠️  树校验失败（跳过单系检验）：{e}", err=True)
         outs = write_subfamily(input_file, outdir, palette_name=palette_name)
         click.echo("已生成：")
         for p in outs:
