@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from . import learn as _learn
 from . import render as _render
 from . import tree as _tree
 from .account import AccountClient, load_config
@@ -538,6 +539,38 @@ def workspaces() -> None:
     except ItolError as e:
         click.echo(f"❌ {e}", err=True)
         raise SystemExit(1) from None
+
+
+@main.command()
+@click.argument("template_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("-o", "--out", type=click.Path(path_type=Path), default=None,
+              help="样式存成 JSON（缺省打印到终端）")
+@click.option("--apply", "new_data", default=None, type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="把学到的样式套到新数据（每行原样进 DATA 区），-o 为输出注解文件")
+def learn(template_file: Path, out: Path | None, new_data: Path | None) -> None:
+    """模板逆向复用：解析已有 iTOL 注解文件的样式参数（对标 itol.toolkit 主题学习）。
+
+    场景：看到别人论文的 iTOL 图想复同样式；或把自己的旧图样式套到新数据。
+    itol learn <注解文件>            # 提取样式参数（打印或存 JSON）
+    itol learn <注解文件> --apply <新数据> -o <新注解>   # 套样式到新数据
+    """
+    try:
+        style = _learn.learn_style(template_file)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        raise SystemExit(1) from None
+    if new_data is not None:
+        if out is None:
+            raise click.UsageError("--apply 需配 -o 输出注解文件")
+        _learn.apply_style(style, new_data, out)
+        click.echo(f"✅ 已套样式到新数据：{out}（关键词 {style['keyword']}）")
+        return
+    js = _learn.style_to_json(style)
+    if out:
+        out.write_text(js + "\n", encoding="utf-8")
+        click.echo(f"✅ 样式已存：{out}（{len(style['header_params'])} 个参数）")
+    else:
+        click.echo(js)
 
 
 @main.command(name="upload-tree")
