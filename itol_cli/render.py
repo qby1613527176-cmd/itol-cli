@@ -49,6 +49,12 @@ def _ensure_dataset_label(path: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _status(msg: str) -> None:
+    """进度反馈（stderr，不污染 stdout 的 SVG 输出）——对标 csvtk/snakemake 的阶段提示。"""
+    import sys
+    print(f"  … {msg}", file=sys.stderr, flush=True)
+
+
 def render(tree_id: str, anno_files: list, out_svg: str | Path,
            out_png: str | Path | None = None, wait: int = 60,
            viewport: tuple[int, int] = (1600, 1200), mode: str | None = None) -> dict:
@@ -65,6 +71,7 @@ def render(tree_id: str, anno_files: list, out_svg: str | Path,
                         diagnosis="pip install playwright") from None
     url = f"https://itol.embl.de/tree/{tree_id}"
     with sync_playwright() as p:
+        _status(f"启动浏览器（Xvfb+Chrome），打开 {url}")
         browser = p.chromium.launch(headless=False, executable_path=CHROME,
                                     args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
@@ -72,6 +79,7 @@ def render(tree_id: str, anno_files: list, out_svg: str | Path,
         page.on("pageerror", lambda e: errors.append(repr(e)[:200]))
         try:
             page.goto(url, timeout=90000, wait_until="domcontentloaded")
+            _status("树页已加载，等待数据模型就绪…")
             ready = False
             for _ in range(max(1, wait // 2)):
                 time.sleep(2)
@@ -87,8 +95,10 @@ def render(tree_id: str, anno_files: list, out_svg: str | Path,
             if not ready:
                 raise ItolError("IT003", f"iTOL 树页数据模型 {wait}s 未就绪",
                                 diagnosis="查树 ID 有效性/网络；大树（千叶级）可加 --wait")
+            _status("数据模型就绪，注入注解…")
             # 显示模式切换（官方函数 llII1ll，含重算+重绘）
             if mode:
+                _status(f"切换显示模式：{mode}")
                 page.evaluate("(m) => llII1ll(m)", DISPLAY_MODES[mode])
                 time.sleep(2)  # 等模式切换重渲
             injected: dict[str, bool] = {}
@@ -104,6 +114,7 @@ def render(tree_id: str, anno_files: list, out_svg: str | Path,
                 tcp = page.evaluate("() => !!tree_changes_pending")
                 injected[Path(f).name] = (r == "ok") and (post > pre or tcp)
             time.sleep(2)  # flush 渲染循环
+            _status("导出 SVG…")
             svg = page.evaluate(
                 """() => { try { var a=project.exportSVG();
                      return new XMLSerializer().serializeToString(a); }
