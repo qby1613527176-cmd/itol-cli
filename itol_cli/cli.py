@@ -255,8 +255,12 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path, palette_name:
 @click.argument("annotations", nargs=-1, type=click.Path(exists=True, path_type=Path))
 @click.option("--project", required=True, help="iTOL 项目名（大小写敏感，须 Web UI 预先建好）")
 @click.option("--name", "tree_name", default="")
-def upload(tree_file: Path, annotations: list, project: str, tree_name: str) -> None:
-    """上传树+注解（⚠️ 需 iTOL 标准订阅 + APIkey）。上传前自动 lint。"""
+@click.option("--dry-run", is_flag=True, help="全校验不实际上传（lint+树校验+key检查+端点探活，只差最后 POST）")
+def upload(tree_file: Path, annotations: list, project: str, tree_name: str, dry_run: bool) -> None:
+    """上传树+注解（⚠️ 需 iTOL 标准订阅 + APIkey）。上传前自动 lint。
+
+    --dry-run：snakemake/nextflow 式干跑——lint+树校验+key+端点探活全做，只差最后 POST。
+    """
     reports = lint_paths(list(annotations))
     bad = [r for r in reports if not r.ok]
     if bad:
@@ -264,6 +268,30 @@ def upload(tree_file: Path, annotations: list, project: str, tree_name: str) -> 
             click.echo(r.summary(), err=True)
         click.echo("❌ lint 未过，上传中止（先修复再传）", err=True)
         sys.exit(1)
+    if dry_run:
+        ok = True
+        # 树文件校验
+        issues = _tree.validate_tree_text(tree_file.read_text(encoding="utf-8", errors="replace"))
+        if issues:
+            ok = False
+            for i in issues:
+                click.echo(f"⚠️  树：{i}", err=True)
+        else:
+            click.echo("✅ 树文件校验通过")
+        # 注解 lint
+        click.echo(f"✅ 注解 lint 通过（{len(annotations)} 文件）")
+        # key 检查
+        try:
+            key = _load_key()
+            click.echo(f"✅ APIkey 已配置（{key[:4]}…）")
+        except ItolError as e:
+            ok = False
+            click.echo(f"❌ {e}", err=True)
+        # 端点探活
+        if _client().tree_exists("0") is not None:
+            click.echo("✅ iTOL 端点可达")
+        click.echo(f"{'✅' if ok else '❌'} dry-run 完成：{'可上传' if ok else '有问题需先修'}（未实际上传）")
+        sys.exit(0 if ok else 1)
     try:
         tid, warnings = _client().upload(tree_file, list(annotations), project, tree_name)
     except ItolError as e:
@@ -645,13 +673,26 @@ def upload_tree(tree_file: Path, project_id: str, name: str | None) -> None:
               help="显示模式：矩形/环形/无根（缺省用 iTOL 默认：<100 叶矩形，否则环形）")
 @click.option("--dpi", default=None, type=int,
               help="高分辨率位图 dpi（≤1000；走服务端 export.cgi 队列，需 itol login，比本地 rsvg 更清）")
+@click.option("--dry-run", is_flag=True, help="全校验不起浏览器（校验树 ID 可达 + lint 注解）")
 def render(tree_id: str, anno: tuple, out: Path, png: Path | None, wait: int, mode: str | None,
-           dpi: int | None) -> None:
+           dpi: int | None, dry_run: bool) -> None:
     """浏览器渲染路：注入注解到 iTOL 树页出带注解图（免费账号可用；Xvfb+playwright，自动套虚拟显示）。
 
     需本机有 Chrome/Chromium；无显示环境自动 xvfb-run 包裹。出带 colorstrip 等真数据集的图唯一程序化路。
     --dpi 触发服务端高分辨率位图（export.cgi 队列，免费账号可用，上限 1000dpi）。
+    --dry-run：校验树 ID 可达 + lint 注解，不起浏览器（快速预检）。
     """
+    if dry_run:
+        ok = _client().tree_exists(tree_id)
+        click.echo(f"{'✅' if ok else '❌'} 树 {tree_id} {'可达' if ok else '不可达/已过期'}")
+        reports = lint_paths(list(anno))
+        bad = [r for r in reports if not r.ok]
+        for r in reports:
+            click.echo(r.summary())
+        if bad:
+            ok = False
+        click.echo(f"{'✅' if ok else '❌'} render dry-run：{'可渲染' if ok else '有问题'}")
+        sys.exit(0 if ok else 1)
     _render.ensure_display(sys.argv[1:])  # 无 DISPLAY 自动 xvfb-run 重跑本命令
     try:
         if dpi is not None and png is not None:
