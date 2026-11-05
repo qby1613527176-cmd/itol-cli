@@ -1,0 +1,29 @@
+# itol-cli
+
+> iTOL（itol.embl.de）系统发育树注解的命令行工具：文本模板一等公民 + lint 校验 + 浏览器渲染 + 账号通路。
+
+## Commands
+
+- `itol doctor` — 环境自检：API key / 端点存活 / 导出探测。
+- `itol lint` — 本地校验 iTOL 注解文件（手写/AI 生成模板的第一道关）。
+- `itol gen` — 场景模板生成（itol templates 看全量场景与输入规范）。
+- `itol upload` — 上传树+注解（⚠️ 需 iTOL 标准订阅 + APIkey）。上传前自动 lint。
+- `itol export` — 导出树图（免认证）。默认 SVG——批量导出无 dpi 参数，位图高分辨率是缺口。
+- `itol status` — 检查树 ID 是否存在于 iTOL。
+- `itol fetch` — 免认证拉公开树的完整结构+元数据（loadTree.cgi，hack4 实证）。
+- `itol tree validate` — 校验树文件（括号/重名/负支长/方言/不可见字符）。对标 PyiTOL validate。
+- `itol tree stats` — 树统计摘要（叶数/支长/支持度/多叉/树高）。对标 gotree stats / PhyKIT。
+- `itol tree peek` — 终端 ASCII 速览树结构（SSH/CI 无浏览器也能看）。对标 gotree draw text。
+- `itol tree reroot` — 定根（外群/中点）。对标 gotree reroot。
+- `itol tree prune` — 剪枝：保留/删除指定叶。对标 gotree prune。
+- `itol tree rename` — 按映射表重命名叶标签。对标 gotree rename --map。
+- `itol delete` — 删除 iTOL 上的树（⚠️ 需订阅+key；不可恢复）。
+- `itol templates` — 场景模板库（每模板=输入规范+生成脚本+预设参数）。
+- `itol login` — 登录 iTOL 账号（会话 cookie 存 ~/.itol-cli/session_cookies，600 权限，约 2h 有效）。
+- `itol whoami` — 查看当前登录账号。
+- `itol workspaces` — 列出账号的工作区/项目/树（工作区→项目→树三层）。
+- `itol learn` — 模板逆向复用：解析已有 iTOL 注解文件的样式参数（对标 itol.toolkit 主题学习）。
+- `itol completion` — 生成 shell 补全脚本（对标 csvtk genautocomplete）。用法：eval "$(itol completion bash)"，之后 itol <Tab> 可补全命令/选项。
+- `itol commands` — 导出机器可读命令目录（对标 PhyKIT llms.txt/commands.json）——agent/脚本可发现性。
+- `itol upload-tree` — 把树文本上传到账号项目（免费账号可用；注解挂树需订阅 batch_uploader 或浏览器自动化）。
+- `itol render` — 浏览器渲染路：注入注解到 iTOL 树页出带注解图（免费账号可用；Xvfb+playwright，自动套虚拟显示）。
