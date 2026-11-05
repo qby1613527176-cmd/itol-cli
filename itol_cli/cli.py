@@ -1,6 +1,7 @@
 """itol — iTOL 命令行工具（模板生成 / lint 校验 / 上传导出流水线）。"""
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -214,6 +215,36 @@ def status(tree_id: str) -> None:
     click.echo(("✅ 存在" if exists else "❌ 不存在或已过期") + f"：https://itol.embl.de/tree/{tree_id}")
     if not exists:
         sys.exit(1)
+
+
+@main.command()
+@click.argument("tree_id")
+@click.option("-o", "--out", type=click.Path(path_type=Path), default=None,
+              help="输出 JSON 文件（缺省打印摘要）")
+@click.option("--datasets", "ds", default=None, help="顺带拉取的数据集 id（逗号分隔）")
+def fetch(tree_id: str, out: Path | None, ds: str | None) -> None:
+    """免认证拉公开树的完整结构+元数据（loadTree.cgi，hack4 实证）。
+
+    返回节点索引表/参数/标签样式/元数据/叶序等 JSON——可本地分析或转 Newick。
+    """
+    try:
+        data = _client().fetch_tree(tree_id, ds)
+    except ItolError as e:
+        click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1) from None
+    if out:
+        out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        click.echo(f"✅ 树结构已存：{out}（{len(json.dumps(data))} 字符）")
+        return
+    node = data.get("node", {})
+    leaf = data.get("leaf", [])
+    info = data.get("info", {})
+    param = data.get("param", {})
+    click.echo(f"树名：{info.get('tree_name', '?')}  https://itol.embl.de/tree/{tree_id}")
+    click.echo(f"节点 {len(node)}（叶 {len(leaf)}）  树高 {param.get('tree_height', '?')}  "
+               f"枝长 {'有' if param.get('has_brl') else '无'}")
+    if info.get("datasets"):
+        click.echo(f"附带数据集：{list(info['datasets'].keys())}")
 
 
 @main.command()

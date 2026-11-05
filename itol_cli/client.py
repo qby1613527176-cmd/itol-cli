@@ -22,6 +22,7 @@ from .errors import auth_required, export_failed, upload_failed
 UPLOAD_URL = "https://itol.embl.de/batch_uploader.cgi"
 EXPORT_URL = "https://itol.embl.de/batch_downloader.cgi"
 DELETE_URL = "https://itol.embl.de/batch_delete.cgi"
+LOADTREE_URL = "https://itol.embl.de/ajax/loadTree.cgi"  # 免认证拉公开树结构+元数据（hack4 实证）
 TREE_PAGE = "https://itol.embl.de/tree/{tid}"
 
 EXPORT_FORMATS = ("svg", "eps", "pdf", "png", "newick", "nexus", "phyloxml")
@@ -170,6 +171,24 @@ class ItolClient:
             raise upload_failed(f"删除失败：{msg}")
 
     # ---- 状态检查（页面型 URL 陷阱：无效 ID 也 200，须解析 title） ----
+    def fetch_tree(self, tree_id: str, dataset_ids: str | None = None) -> dict:
+        """POST loadTree.cgi 拉公开树的完整结构+元数据（免认证，hack4 实证）。
+
+        返回 JSON：node（节点索引 par/kids/bl/lf）/ param（root/has_brl/tree_height）/
+        info（names/label_color/node_metadata/tree_name/datasets/...）/ leaf（叶序）。
+        """
+        def call():
+            data = {"tree": tree_id}
+            if dataset_ids:
+                data["batch"] = "1"
+                data["ds"] = dataset_ids
+            return self.session.post(LOADTREE_URL, data=data, timeout=self.timeout)
+        r = self._retry(call)
+        try:
+            return r.json()
+        except ValueError:
+            raise export_failed(f"loadTree 响应非 JSON：{r.text[:150]!r}") from None
+
     def tree_exists(self, tree_id: str) -> bool:
         def call():
             self._throttle()
