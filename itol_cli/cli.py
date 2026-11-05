@@ -28,6 +28,38 @@ from .templates import (
 )
 
 
+def _extract_data_ids(path: Path) -> list[str]:
+    """提取 iTOL 注解文件 DATA 区第一列的节点 ID（跨 SEPARATOR 形态）。"""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    # 探测分隔符
+    sep = "\t"
+    for ln in lines:
+        ls = ln.strip().upper()
+        if ls.startswith("SEPARATOR"):
+            if "SPACE" in ls:
+                sep = " "
+            elif "COMMA" in ls:
+                sep = ","
+            break
+    ids: list[str] = []
+    in_data = False
+    for ln in lines:
+        ls = ln.strip()
+        if not in_data:
+            if ls.upper() == "DATA":
+                in_data = True
+            continue
+        if not ls or ls.startswith("#"):
+            continue
+        first = ln.split(sep)[0].strip().strip("'\"")
+        if first:
+            ids.append(first)
+    return ids
+
+
 def _read_idset(spec: str | None) -> set[str] | None:
     """读 ID 集合：逗号分隔字符串，或 @文件（每行一个 ID）。"""
     if not spec:
@@ -78,16 +110,52 @@ def doctor() -> None:
 
 @main.command()
 @click.argument("files", nargs=-1, type=click.Path(exists=True, path_type=Path))
-def lint(files: list) -> None:
-    """本地校验 iTOL 注解文件（手写/AI 生成模板的第一道关）。"""
-    if not files:
-        raise click.UsageError("itol lint <注解文件...>")
-    reports = lint_paths(list(files))
-    for r in reports:
-        click.echo(r.summary())
-    if any(not r.ok for r in reports):
+@click.option("--tree", "tree_file", default=None, type=click.Path(exists=True, path_type=Path),
+              help="交叉校验：注解 DATA 区的 ID 是否真存在于该树（防 ID 写错的静默坑）")
+def lint(files: list, tree_file: Path | None) -> None:
+    """本地校验 iTOL 注解文件（手写/AI 生成模板的第一道关）。
+
+    加 --tree 会额外交叉校验：注解 DATA 区第一列的 ID 是否真在树里（叶标签/内部节点名），
+    并顺带校验树文件本身（括号/重名/负支长/不可见字符）——烂树/错 ID 别进 gen→render。
+    """
+    if not files and tree_file is None:
+        raise click.UsageError("itol lint <注解文件...> [--tree 树文件]")
+    ok = True
+    if tree_file is not None:
+        # 树文件本身校验
+        issues = _tree.validate_tree_text(tree_file.read_text(encoding="utf-8", errors="replace"))
+        if issues:
+            ok = False
+            for i in issues:
+                click.echo(f"⚠️  树 {tree_file.name}：{i}", err=True)
+        else:
+            click.echo(f"✅ 树 {tree_file.name}：结构校验通过")
+    if files:
+        reports = lint_paths(list(files))
+        for r in reports:
+            click.echo(r.summary())
+        if any(not r.ok for r in reports):
+            ok = False
+        # 交叉校验：注解 DATA ID vs 树节点
+        if tree_file is not None:
+            try:
+                _, root = _tree.load_tree(tree_file)
+            except ItolError as e:
+                click.echo(str(e), err=True)
+                sys.exit(1)
+            tree_names = {n.name for n in root.iter() if n.name}
+            for f in files:
+                ids = _extract_data_ids(Path(f))
+                missing = [i for i in ids if i not in tree_names]
+                if missing:
+                    ok = False
+                    click.echo(f"❌ {Path(f).name}：{len(missing)}/{len(ids)} 个 ID 不在树里"
+                               f"（如 {missing[:5]}）", err=True)
+                elif ids:
+                    click.echo(f"✅ {Path(f).name}：{len(ids)} 个 ID 全部在树里")
+    if not ok:
         sys.exit(1)
-    click.echo(f"\n全部通过（{len(reports)} 文件）")
+    click.echo("\n全部通过")
 
 
 @main.command()
