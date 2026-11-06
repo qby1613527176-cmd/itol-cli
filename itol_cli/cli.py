@@ -763,6 +763,15 @@ def plan(claim: str, tree: Path | None, n_groups: int | None) -> None:
     click.echo(f"主张：{p['名称']}\n  {p['说明']}\n")
     click.echo(f"主注解（视觉最强）：{'、'.join(p['主注解'])}")
     click.echo(f"支撑注解：{'、'.join(p['支撑'])}")
+    # 密度护栏：推荐的注解组合映射到视觉通道，超通道预算就告警（Wilke：单图 ≤5 scale）
+    _CHANNEL_OF = {"subfamily": "color", "bootstrap": "size", "timescale": "position",
+                   "domains": "shape", "heatmap": "color", "selection": "color",
+                   "connections": "linetype", "pav": "color", "motif": "shape"}
+    layers = {_CHANNEL_OF.get(a, "color"): a for a in (list(p["主注解"]) + list(p["支撑"]))}
+    for dw in _aesthetics.channel_budget_check(layers):
+        click.echo(f"  {dw}", err=True)
+    if len(layers) > 3:
+        click.echo(f"  💡 密度提示：组合占 {len(layers)} 个视觉通道，注意主注解要视觉最强", err=True)
     # 布局/色板美学护栏（给了树就按叶数推荐布局）
     if tree is not None:
         try:
