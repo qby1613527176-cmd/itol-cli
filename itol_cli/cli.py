@@ -728,6 +728,61 @@ def iterate(tree_id: str, groups_tsv: Path, axes: str, top: int, render_top: int
             click.echo(f"  → {params['layout']}/{params['palette']}：用此参数 itol gen + render 出图")
 
 
+# 主张→注解组合映射（Rougier R2：主张决定注解；树类型×主张预设，METHODOLOGY.md 第四节）
+_CLAIM_PRESETS = {
+    "subfamily": {"名称": "亚家族划分", "主注解": ["subfamily"], "支撑": ["bootstrap"],
+                  "说明": "主张=亚家族划分/扩张。亚家族色带为主注解（必须视觉最强），支持度为支撑。"},
+    "expansion": {"名称": "家族扩张/收缩", "主注解": ["subfamily", "pav"], "支撑": ["bootstrap"],
+                  "说明": "主张=家族在不同物种/类群的扩张收缩。亚家族色带+泛基因组有冇矩阵。"},
+    "timescale": {"名称": "分化时间", "主注解": ["timescale"], "支撑": ["bootstrap"],
+                  "说明": "主张=分化时间。时间轴为主注解（物种树用 posterior 非 bootstrap）。"},
+    "domain": {"名称": "结构域组织", "主注解": ["domains"], "支撑": ["subfamily"],
+               "说明": "主张=蛋白结构域组织与进化的关系。结构域示意为主注解。"},
+    "expression": {"名称": "表达模式", "主注解": ["heatmap"], "支撑": ["subfamily"],
+                    "说明": "主张=基因表达模式随进化的变化。表达热图为主注解（行序=树叶序）。"},
+    "selection": {"名称": "选择压力", "主注解": ["selection"], "支撑": ["subfamily"],
+                  "说明": "主张=选择压力/正选择。ω 渐变为主注解，正选择枝高亮。"},
+    "synteny": {"名称": "共线性/串联", "主注解": ["connections"], "支撑": ["subfamily"],
+                "说明": "主张=共线性/串联复制关系。共线连线为主注解。"},
+}
+
+
+@main.command()
+@click.argument("claim", type=click.Choice(sorted(_CLAIM_PRESETS)))
+@click.option("--tree", type=click.Path(exists=True, path_type=Path), default=None, help="树文件（算叶数给布局建议）")
+@click.option("--groups", "n_groups", type=int, default=None, help="分组数（给色板建议）")
+def plan(claim: str, tree: Path | None, n_groups: int | None) -> None:
+    """主张驱动：你要论证什么 → 推荐注解组合（Rougier R2 主张决定注解）。
+
+    逆向工作流：先说主张，再选注解。itol plan <主张> 给出主注解+支撑注解的组合建议
+    +生成命令+布局/色板的美学护栏。itol plan --list 看全部主张。
+    """
+    if claim not in _CLAIM_PRESETS:
+        raise click.UsageError(f"未知主张 {claim}。可选：{'、'.join(sorted(_CLAIM_PRESETS))}")
+    p = _CLAIM_PRESETS[claim]
+    click.echo(f"主张：{p['名称']}\n  {p['说明']}\n")
+    click.echo(f"主注解（视觉最强）：{'、'.join(p['主注解'])}")
+    click.echo(f"支撑注解：{'、'.join(p['支撑'])}")
+    # 布局/色板美学护栏（给了树就按叶数推荐布局）
+    if tree is not None:
+        try:
+            _, root = _tree.load_tree(tree)
+            n_leaves = len(root.leaves())
+            click.echo(f"\n树：{n_leaves} 叶")
+            for w in _aesthetics.readability_warnings(n_leaves, "rect"):
+                click.echo(f"  {w}", err=True)
+            pt = _aesthetics.recommend_font_pt(n_leaves)
+            click.echo(f"  建议叶标签字号：{pt}pt；布局：{'circular' if n_leaves > 60 else 'rect'}")
+        except ItolError as e:
+            click.echo(str(e), err=True)
+    if n_groups:
+        pname, _, pwarn = _aesthetics.recommend_palette(n_groups)
+        click.echo(f"  建议色板：{pname}")
+        for w in pwarn:
+            click.echo(f"  {w}", err=True)
+    click.echo(f"\n生成命令：itol gen {p['主注解'][0]} <输入文件>" + (f" --tree {tree}" if tree else ""))
+
+
 @main.command(name="upload-tree")
 @click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--project", "project_id", required=True, help="目标项目 ID（itol workspaces 查）")
