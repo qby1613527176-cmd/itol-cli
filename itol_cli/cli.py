@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from . import aesthetics as _aesthetics
 from . import learn as _learn
 from . import render as _render
 from . import tree as _tree
@@ -189,6 +190,11 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path, palette_name:
     if not input_file:
         raise click.UsageError(f"itol gen {scenario} <输入文件>\n输入规范：{spec.inputs}")
     if scenario == "subfamily":
+        # 色板分档警告（文献锚：Okabe-Ito 8 / Tol muted 9 是定性色板上限）
+        n_groups = len(_parse_groups_tsv(input_file))
+        _, _, pwarn = _aesthetics.recommend_palette(n_groups)
+        for wmsg in pwarn:
+            click.echo(wmsg, err=True)
         # 单系检验（给了树就验）：亚家族非单系是基因家族图的硬质量门，非单系大声警告
         if tree is not None:
             try:
@@ -196,8 +202,11 @@ def gen(scenario: str, input_file: Path, outdir: Path, tree: Path, palette_name:
                 for gname, mono, note in _tree.monophyly_groups(root, _parse_groups_tsv(input_file)):
                     click.echo(f"{'✅' if mono else '⚠️ '} 单系检验 {gname}：{note}",
                                err=not mono)
+                # 可读性预检（叶数×布局×图幅）
+                for rw in _aesthetics.readability_warnings(len(root.leaves()), "rect"):
+                    click.echo(rw, err=True)
             except ItolError as e:
-                click.echo(f"⚠️  树校验失败（跳过单系检验）：{e}", err=True)
+                click.echo(f"⚠️  树校验失败（跳过单系/可读性检验）：{e}", err=True)
         outs = write_subfamily(input_file, outdir, palette_name=palette_name)
         click.echo("已生成：")
         for p in outs:
