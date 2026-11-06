@@ -153,3 +153,96 @@ SWEEP_AXES: dict[str, list] = {
     "font_pt": [6, 8, 10],
     "strip_width": [30, 50, 80],
 }
+
+
+# ── 色板评分（iterate 闭环的约束评分器；ColorBrewer「配色是约束求解」思想）─────────
+NAMED_PALETTES = {
+    "npg": ["#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#F39B7F", "#8491B4", "#91D1C2", "#DC0000", "#7E6148", "#B09C85"],
+    "okabeito": OKABE_ITO,
+    "tol_bright": TOL_BRIGHT,
+    "tol_muted": TOL_MUTED,
+}
+
+
+def _hex_rgb(h: str) -> tuple[int, int, int]:
+    h = h.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _srgb_linear(v: float) -> float:
+    v /= 255.0
+    return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+
+def _rgb_lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """sRGB → CIELAB（D65）。返回 (L, a, b)。"""
+    r, g, b = (_srgb_linear(c) for c in rgb)
+    # linear RGB → XYZ (D65)
+    x = r * 0.4124 + g * 0.3576 + b * 0.1805
+    y = r * 0.2126 + g * 0.7152 + b * 0.0722
+    z = r * 0.0193 + g * 0.1192 + b * 0.9505
+    # 归一到 D65 白点
+    xn, yn, zn = x / 0.95047, y / 1.0, z / 1.08883
+
+    def f(t: float) -> float:
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    fx, fy, fz = f(xn), f(yn), f(zn)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def _sim_deuteranopia_lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """Deuteranopia（绿色盲）模拟（linear RGB 矩阵）→ CIELAB。"""
+    r, g, b = (_srgb_linear(c) for c in rgb)
+    # Machado 2009 近似（linear RGB 域）
+    dr = 0.625 * r + 0.375 * g
+    dg = 0.7 * r + 0.3 * g
+    db = 0.3 * g + 0.7 * b
+    sim_rgb: tuple[int, int, int] = (round(dr * 255), round(dg * 255), round(db * 255))
+    return _rgb_lab(sim_rgb)
+
+
+def _delta_e(lab1: tuple, lab2: tuple) -> float:
+    """CIE76 ΔE（CIELAB 欧氏距离，感知均匀）。"""
+    return sum((x - y) ** 2 for x, y in zip(lab1, lab2)) ** 0.5
+
+
+def score_palette(colors: list[str], n_groups: int) -> dict:
+    """给一组色板打分（约束求解，非美学评判）。返回 {score, issues, min_sim_dist}。
+
+    约束：①绿色盲模拟（CIELAB ΔE）两两可区分 ②组数不超色板安全上限 ③与白底对比度。
+    分数 0-10。CIELAB ΔE：≥20 大致可区分，<12 难区分。
+    """
+    issues: list[str] = []
+    use = [colors[i % len(colors)] for i in range(n_groups)]
+    sim = [_sim_deuteranopia_lab(_hex_rgb(c)) for c in use]
+    mind = min((_delta_e(sim[i], sim[j]) for i in range(len(sim)) for j in range(i + 1, len(sim))), default=999)
+    cb_ok = mind >= 12.0  # CIELAB ΔE≥12 绿色盲下可区分（经验阈值）
+    if not cb_ok:
+        issues.append(f"绿色盲模拟下有两色难区分（min CIELAB ΔE={mind:.1f}<12）")
+    if n_groups > 9:
+        issues.append(f"{n_groups} 组超定性色板上限（Tol：>9 应换 banded sequential）")
+    def lum(c: str) -> float:
+        return _rgb_lab(_hex_rgb(c))[0]
+    lowcontrast = [c for c in use if lum(c) > 92]  # CIELAB L* 太接近白(100)
+    if lowcontrast:
+        issues.append(f"{len(lowcontrast)} 色与白底对比不足（太浅：{lowcontrast[:2]}）")
+    score = 10.0
+    if not cb_ok:
+        score -= 4
+    if n_groups > 9:
+        score -= 3
+    if lowcontrast:
+        score -= 1.5 * len(lowcontrast)
+    return {"score": max(0.0, round(score, 1)), "issues": issues, "min_sim_dist": round(mind, 1),
+            "colorblind_ok": cb_ok, "n_colors": n_groups}
+
+
+def iterate_palettes(n_groups: int, palettes: dict[str, list[str]] | None = None) -> list[dict]:
+    """对全部命名色板打分并排序（iterate 的色板维度）。返回按分数降序的变体列表。"""
+    pals = palettes or NAMED_PALETTES
+    out = []
+    for name, colors in pals.items():
+        s = score_palette(colors, n_groups)
+        out.append({"palette": name, **s, "colors": [colors[i % len(colors)] for i in range(n_groups)]})
+    out.sort(key=lambda x: -x["score"])
+    return out
