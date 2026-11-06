@@ -99,3 +99,57 @@ def channel_budget_check(layers: dict[str, str]) -> list[str]:
         if layers.get(ch) and "连续" in str(layers[ch]):
             w.append(f"⚠️ {ch} 通道只能编码离散数据（Wilke），{layers[ch]} 疑似连续——改用 size/color")
     return w
+
+
+# ── 迭代评分器（itol iterate 的目标函数）───────────────────────────────────────
+def score_variant(*, n_leaves: int, n_groups: int, layout: str, palette: str,
+                  font_pt: float, strip_width: int, n_datasets: int = 1,
+                  fig_width_mm: float = 180.0, fig_height_mm: float = 170.0) -> tuple[float, list[str]]:
+    """对一个出图变体打综合分（0-10，越高越好）+ 评分明细。
+
+    评分维度（文献锚，readability 权重高于 aesthetics——Rougier R9）：
+    - 可读性（40%）：叶数×布局×图幅，标签可读
+    - 色板适配（25%）：定性色板分档匹配 + 色盲安全
+    - 信息密度（20%）：通道预算（≤5 scale）
+    - 布局合理（15%）：布局与叶数匹配
+    """
+    notes: list[str] = []
+    score = 10.0
+    # 可读性（权重 4）
+    rw = readability_warnings(n_leaves, layout, fig_width_mm, fig_height_mm)
+    read_pen = 4.0 if rw else 0.0
+    if rw:
+        notes.append(f"可读性 -{read_pen}（{rw[0][:30]}…）")
+    score -= read_pen
+    # 色板适配（权重 2.5）
+    _, _, pwarn = recommend_palette(n_groups)
+    if any("超出" in w for w in pwarn):
+        score -= 2.5
+        notes.append("色板 -2.5（超定性色板上限）")
+    elif pwarn:
+        score -= 1.0
+        notes.append("色板 -1.0（接近上限）")
+    # 通道预算（权重 2）
+    if n_datasets > 5:
+        score -= 2.0
+        notes.append(f"密度 -2.0（{n_datasets} 数据集 >5 scale 上限）")
+    elif n_datasets > 3:
+        score -= 1.0
+        notes.append(f"密度 -1.0（{n_datasets} 数据集，接近上限）")
+    # 布局合理（权重 1.5）
+    if layout == "circular" and n_leaves < 40:
+        score -= 1.0
+        notes.append("布局 -1.0（小叶数环形不如矩形可读）")
+    if layout in ("rect", "rectangular") and n_leaves > 200:
+        score -= 1.5
+        notes.append("布局 -1.5（千叶级矩形标签糊）")
+    return max(0.0, round(score, 1)), notes
+
+
+# 迭代变体搜索空间（美学参数轴）
+SWEEP_AXES: dict[str, list] = {
+    "layout": ["rect", "circular"],
+    "palette": ["npg", "okabeito", "tol_bright", "tol_muted"],
+    "font_pt": [6, 8, 10],
+    "strip_width": [30, 50, 80],
+}

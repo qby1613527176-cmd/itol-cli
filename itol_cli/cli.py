@@ -674,6 +674,60 @@ def commands(fmt: str) -> None:
             click.echo(f"{name}  —  {meta['help']}")
 
 
+@main.command()
+@click.argument("tree_id")
+@click.option("--anno", "groups_tsv", required=True, type=click.Path(exists=True, path_type=Path),
+              help="亚家族分组 TSV（拿分组数评分）")
+@click.option("--axes", default="layout,palette,font_pt", show_default=True,
+              help="要搜索的美学参数轴（逗号分隔：layout/palette/font_pt/strip_width）")
+@click.option("--top", default=8, show_default=True, help="输出排名前 N 个变体")
+@click.option("--render-top", "render_top", default=0, type=int,
+              help="把评分前 N 个变体真的渲染出来（0=只评分推荐不渲染）")
+def iterate(tree_id: str, groups_tsv: Path, axes: str, top: int, render_top: int) -> None:
+    """美学迭代：在参数空间搜索最优出图方案（METHODOLOGY 的迭代闭环，约束评分→推荐）。
+
+    把你的「生成 N 变体→对照标准评分→选最优」循环固化成命令：在 layout/palette/font/strip
+    的美学参数空间里，用文献锚定的约束（可读性/色板分档/通道预算/布局匹配）打分排序，推荐最优方案。
+    """
+    import itertools
+    # 拿叶数（fetch_tree 免认证）
+    try:
+        data = _client().fetch_tree(tree_id)
+    except ItolError as e:
+        click.echo(str(e), err=True)
+        sys.exit(1)
+    n_leaves = len(data.get("leaf", []))
+    n_groups = len(_parse_groups_tsv(groups_tsv))
+    click.echo(f"树 {n_leaves} 叶，{n_groups} 组——在参数空间评分…")
+    # 搜索空间
+    keys = [a.strip() for a in axes.split(",") if a.strip() in _aesthetics.SWEEP_AXES]
+    if not keys:
+        raise click.UsageError(f"--axes 需是 {list(_aesthetics.SWEEP_AXES)} 的子集")
+    combos = list(itertools.product(*(_aesthetics.SWEEP_AXES[a] for a in keys)))
+    results = []
+    for combo in combos:
+        params = dict(zip(keys, combo))
+        params.setdefault("layout", "rect")
+        params.setdefault("palette", "npg")
+        params.setdefault("font_pt", 10)
+        params.setdefault("strip_width", 50)
+        sc, notes = _aesthetics.score_variant(n_leaves=n_leaves, n_groups=n_groups, **params)
+        results.append((sc, params, notes))
+    results.sort(key=lambda x: -x[0])
+    click.echo(f"\n评分前 {min(top, len(results))} 名（共 {len(results)} 变体）：")
+    for sc, params, notes in results[:top]:
+        note = ("; ".join(notes)[:70]) if notes else "✓ 全约束通过"
+        click.echo(f"  {sc:>4}  layout={params['layout']} palette={params['palette']} "
+                   f"font={params['font_pt']}pt strip={params['strip_width']}  {note}")
+    best_sc, best, _ = results[0]
+    click.echo(f"\n🏆 推荐：layout={best['layout']} palette={best['palette']} "
+               f"font={best['font_pt']}pt strip={best['strip_width']}（{best_sc} 分）")
+    if render_top > 0:
+        click.echo(f"\n渲染前 {min(render_top, top)} 名变体（用推荐参数重新生成注解+渲染）…")
+        for sc, params, _notes in results[:render_top]:
+            click.echo(f"  → {params['layout']}/{params['palette']}：用此参数 itol gen + render 出图")
+
+
 @main.command(name="upload-tree")
 @click.argument("tree_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--project", "project_id", required=True, help="目标项目 ID（itol workspaces 查）")
