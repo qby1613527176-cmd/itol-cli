@@ -1,6 +1,27 @@
-.venv/
+# Python
 __pycache__/
+*.py[cod]
 *.egg-info/
-dist/
+.eggs/
 build/
+dist/
+# 虚拟环境（绝不发布）
+.venv/
+venv/
+# 测试/缓存
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+# 账号配置（含凭证，绝不发布）
+.itol-cli/
+config
+session_cookies
+*.local
+# 测试产物
+/tmp/
+*.svg
+*.png
+!docs/**/*.svg
+!docs/**/*.png

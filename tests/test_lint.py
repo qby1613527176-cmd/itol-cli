@@ -1,4 +1,5 @@
 """lint 校验器测试——官方模板必须全过 + 人造坑必须被抓。"""
+import os
 from pathlib import Path
 
 from itol_cli.lint import KNOWN_KEYWORDS, lint_file
@@ -61,7 +62,7 @@ def test_tree_colors_ok(tmp_path):
 
 def test_official_templates_all_pass():
     """30 个官方模板必须全过（用它们当回归——官方语法即真相）。"""
-    official = Path("tests/fixtures/official_templates")
+    official = Path(os.environ.get("ITOL_OFFICIAL_TEMPLATES", "tests/fixtures/official_templates"))
     if not official.is_dir():
         return  # 模板不在的环境跳过（CI）
     failures = []
@@ -74,7 +75,7 @@ def test_official_templates_all_pass():
 
 def test_all_known_keywords_are_first_line_of_official_templates():
     """官方模板首行 ⊆ 我们的关键字表（防关键字表漏新类型）。"""
-    official = Path("tests/fixtures/official_templates")
+    official = Path(os.environ.get("ITOL_OFFICIAL_TEMPLATES", "tests/fixtures/official_templates"))
     if not official.is_dir():
         return
     for f in sorted(official.glob("*.txt")):

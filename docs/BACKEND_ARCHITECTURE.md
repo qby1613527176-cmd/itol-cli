@@ -45,6 +45,6 @@ jQuery 3.5.1 + Bootstrap 4 + jsPanel + Syncfusion EJ2（定制 build）+ Sortabl
 - userInfo.cgi 免登录访问 302→login.cgi（cookie 控制点）
 
 ## 树 ID 空间（storage 线，本地分析）
-- 25 位十进制，前 10 位 `0000000000` 疑似用户命名空间段（两棵同属 a_free_account 的树共享）
+- 25 位十进制，前 10 位疑似用户命名空间段（同一账号下多树共享）（同一免费账号下多棵树共享该段——示意）
 - 后 15 位不连续、不像 epoch/自增 → **大概率随机/哈希截断**
 - 含义：树 ID 不可枚举 → 分享链接（知 ID 即访问）靠不可猜测性保护，ID 不泄就安全
