@@ -101,3 +101,74 @@ def style_from_json(text: str) -> dict:
     if "keyword" not in d or "header_params" not in d:
         raise invalid_input("样式 JSON 缺 keyword/header_params 字段")
     return d
+
+
+# ── 图片样式逆向（用户拖入「认为美观」的图，复刻其参数）────────────────────────────
+def learn_svg(path: Path) -> dict:
+    """从 SVG 矢量图反推样式参数（高保真，零依赖）。
+
+    SVG 是结构化 XML：颜色/字号/几何/布局全在标签里。提取调色板（用频排序）、
+    字号、布局（矩形/环形）、叶数、枝色 → style dict（兼容 apply_style）。
+    """
+    import re
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    # 调色板：收集 fill/stroke 的非黑白灰色，按频次排序
+    colors: dict[str, int] = {}
+    for m in re.finditer(r'(?:fill|stroke)="([^"]+)"', text):
+        c = m.group(1).strip().lower()
+        if c.startswith("#") and c not in ("#000", "#000000", "#fff", "#ffffff", "#888888", "#ccc", "#333", "#666", "#999"):
+            colors[c] = colors.get(c, 0) + 1
+    palette = [c for c, _ in sorted(colors.items(), key=lambda x: -x[1])]
+    # 字号：font-size 属性
+    fonts = [float(m.group(1)) for m in re.finditer(r'font-size="?([\d.]+)', text)]
+    font_pt = round(sum(fonts) / len(fonts), 1) if fonts else None
+    # 布局：环形=有圆弧命令或 rotate 变换占多；矩形=直线为主
+    n_arc = len(re.findall(r'[d]\s*=\s*"[^"]*[aA][^"]*"', text))
+    n_line = text.count("<line") + text.count("<polyline")
+    layout = "circular" if n_arc > n_line * 0.3 and n_arc > 3 else "rect"
+    # 叶数：<text> 标签数（近似）
+    n_labels = len(re.findall(r"<text", text))
+    return {
+        "source_image": str(path),
+        "palette": palette[:12],
+        "n_colors": len(palette),
+        "font_pt": font_pt,
+        "layout": layout,
+        "n_labels": n_labels,
+        "branch_colors": [c for c in palette if c],
+    }
+
+
+def learn_image(path: Path) -> dict:
+    """从图片反推样式参数。.svg → 全解析；.png/.jpg → 主色调色板+布局（需 PIL）。
+
+    返回 style dict + 来源说明。PNG 需 pillow（pip install pillow）。
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix == ".svg":
+        d = learn_svg(path)
+        d["method"] = "svg 全解析（高保真）"
+        return d
+    if suffix in (".png", ".jpg", ".jpeg"):
+        try:
+            from PIL import Image  # type: ignore
+        except ImportError:
+            raise invalid_input(
+                "PNG/JPG 图片样式提取需 pillow（SVG 无需）。装一下：pip install pillow；或改用 SVG 版图片（高保真）") from None
+        img = Image.open(path).convert("RGB")
+        img.thumbnail((200, 200))  # 缩小加速
+        # 主色提取：quantize 聚类
+        q = img.quantize(colors=10)
+        pal = q.getpalette()[:30]
+        counts = sorted(q.getcolors(), reverse=True)
+        palette = []
+        for cnt, idx in counts:
+            r, g, b = pal[idx * 3:idx * 3 + 3]
+            if (r, g, b) not in ((255, 255, 255), (0, 0, 0)) and not (r > 230 and g > 230 and b > 230):
+                palette.append(f"#{r:02x}{g:02x}{b:02x}")
+        w, h = Image.open(path).size
+        layout = "circular" if abs(w - h) / max(w, h) < 0.15 else "rect"  # 方形画布≈环形
+        return {"source_image": str(path), "method": "png 主色提取（近似）", "palette": palette[:12],
+                "n_colors": len(palette), "layout": layout,
+                "note": "PNG 只能拿调色板+布局；字号/间距建议用 SVG 版复刻"}
+    raise invalid_input(f"不支持的图片格式 {suffix}（支持 .svg / .png / .jpg）")

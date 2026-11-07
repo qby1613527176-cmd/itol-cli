@@ -604,13 +604,32 @@ def workspaces() -> None:
 @click.option("--apply", "new_data", default=None, type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help="把学到的样式套到新数据（每行原样进 DATA 区），-o 为输出注解文件")
 def learn(template_file: Path, out: Path | None, new_data: Path | None) -> None:
-    """模板逆向复用：解析已有 iTOL 注解文件的样式参数（对标 itol.toolkit 主题学习）。
+    """逆向复用：解析已有 iTOL 注解文件**或美观图片**的样式参数（对标 itol.toolkit 主题学习）。
 
-    场景：看到别人论文的 iTOL 图想复同样式；或把自己的旧图样式套到新数据。
+    场景：看到别人论文的 iTOL 图想复同样式。两种输入：
+    - **拖入图片**（.svg 高保真全解析 / .png 主色提取需 pillow）：复刻调色板+布局+字号
+    - 注解文件（.txt）：提取 header 样式参数，可 --apply 套到新数据
+    itol learn <图片.svg|.png>        # 从图片复刻样式参数
     itol learn <注解文件>            # 提取样式参数（打印或存 JSON）
     itol learn <注解文件> --apply <新数据> -o <新注解>   # 套样式到新数据
     """
+    is_image = template_file.suffix.lower() in (".svg", ".png", ".jpg", ".jpeg")
     try:
+        if is_image:
+            style = _learn.learn_image(template_file)
+            click.echo(f"✅ 从{style.get('method', '图片')}提取样式（{template_file.name}）：")
+            if style.get("palette"):
+                click.echo(f"  调色板（{style.get('n_colors')} 色，用频排序）：{' '.join(style['palette'])}")
+            if style.get("layout"):
+                click.echo(f"  布局：{style['layout']}")
+            if style.get("font_pt"):
+                click.echo(f"  字号：~{style['font_pt']}pt")
+            if style.get("note"):
+                click.echo(f"  💡 {style['note']}")
+            if out:
+                out.write_text(json.dumps(style, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                click.echo(f"✅ 样式已存：{out}")
+            return
         style = _learn.learn_style(template_file)
     except ItolError as e:
         click.echo(str(e), err=True)
