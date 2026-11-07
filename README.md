@@ -1,11 +1,15 @@
 # itol-cli
 
+[![PyPI](https://img.shields.io/pypi/v/itol-cli)](https://pypi.org/project/itol-cli/) [![GitHub](https://img.shields.io/badge/github-qby1613527176--cmd%2Fitol--cli-blue)](https://github.com/qby1613527176-cmd/itol-cli)
+
 iTOL（itol.embl.de）命令行工具：**注解模板生成 + 本地 lint 校验 + 上传/导出流水线**。
 
 设计哲学：**设计即数据**——注解文件是一等公民的纯文本模板（人/AI 可直接手写），CLI 负责生成、校验、上传、导出闭环。
 
 ```bash
-uv tool install itol-cli   # 首推：免 Python 环境（MultiQC 同款推荐）
+pip install itol-cli        # PyPI 已发布
+uv tool install itol-cli    # 免 Python 环境（MultiQC 同款推荐）
+```
 pip install itol-cli        # 或走 pip（发布后）
 # 或源码：pip install -e .
 ```
